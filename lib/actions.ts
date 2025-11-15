@@ -1,109 +1,39 @@
-"use server"
+"use server";
 
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
-export async function signIn(prevState: any, formData: FormData) {
-  if (!formData) {
-    return { error: "Form data is missing" }
-  }
+// Las funciones de signIn y signUp ahora se manejan en el cliente con Firebase Auth
+// Ver: components/auth/login-form-firebase.tsx y register-form-firebase.tsx
 
-  const email = formData.get("email")
-  const password = formData.get("password")
-
-  if (!email || !password) {
-    return { error: "Email and password are required" }
-  }
-
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
+/**
+ * Crea una cookie de sesión con el token de Firebase
+ */
+export async function createSessionCookie(idToken: string) {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.toString(),
-      password: password.toString(),
-    })
+    const cookieStore = await cookies();
 
-    if (error) {
-      return { error: error.message }
-    }
+    // Guardar el token en una cookie
+    cookieStore.set("session", idToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 5, // 5 días
+      path: "/",
+    });
 
-    const emailAddr = data?.user?.email || data?.session?.user?.email || ""
-    const isAdmin = !!emailAddr?.includes("@alumno.buap.mx")
-
-    return { success: true, isAdmin }
+    return { success: true };
   } catch (error) {
-    console.error("Login error:", error)
-    return { error: "An unexpected error occurred. Please try again." }
-  }
-}
-
-export async function signUp(prevState: any, formData: FormData) {
-  if (!formData) {
-    return { error: "Form data is missing" }
-  }
-
-  const email = formData.get("email")
-  const password = formData.get("password")
-  const fullName = formData.get("fullName")
-  const username = formData.get("username")
-
-  if (!email || !password) {
-    return { error: "Email and password are required" }
-  }
-
-  if (!username) {
-    return { error: "Username is required" }
-  }
-
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-  try {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-      (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000")
-
-    // Primero verificamos si el usuario ya existe
-    const { data: existingUser } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('username', username.toString())
-      .single()
-
-    if (existingUser) {
-      return { error: "Este nombre de usuario ya está en uso" }
-    }
-
-    const { error } = await supabase.auth.signUp({
-      email: email.toString(),
-      password: password.toString(),
-      options: {
-        emailRedirectTo: `${baseUrl}/dashboard`,
-        data: {
-          full_name: fullName?.toString() || "",
-          username: username?.toString() || "",
-        },
-      },
-    })
-
-    if (error) {
-      return { error: error.message }
-    }
-
-    return { success: "¡Revisa tu correo para confirmar tu cuenta y comenzar a aprender!" }
-  } catch (error) {
-    console.error("Sign up error:", error)
-    return { error: "An unexpected error occurred. Please try again." }
+    console.error("Error creando cookie de sesión:", error);
+    return { success: false, error: "Error al crear sesión" };
   }
 }
 
 export async function signOut() {
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
+  const cookieStore = await cookies();
 
-  await supabase.auth.signOut()
-  redirect("/auth/login")
+  // Eliminar todas las cookies de sesión
+  cookieStore.delete("session");
+
+  redirect("/auth/login");
 }

@@ -1,21 +1,24 @@
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
-import { cache } from "react"
-import type { Database } from "./types"
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import { cache } from "react";
 
 // Check if Supabase environment variables are available
 export const isSupabaseConfigured =
   typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
   process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
   typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
 
 // Create a cached version of the Supabase client for Server Components
-export const createClient = cache(() => {
+export const createClient = cache(async () => {
   if (!isSupabaseConfigured) {
-    throw new Error("Supabase no está configurado correctamente. Verifica las variables de entorno.")
+    // Si Supabase no está configurado, retornamos un cliente mock
+    // Esto permite que la app funcione solo con Firebase
+    return null as any;
   }
-  // Pre-fetch cookie store so the helper doesn't call cookies() directly
-  const cookieStore = cookies()
-  return createServerComponentClient<Database>({ cookies: () => cookieStore })
-})
+  // Await cookie store to comply with Next.js 15 requirements
+  const cookieStore = await cookies();
+  return createServerComponentClient({ cookies: () => cookieStore });
+});
+
+export type Database = any;

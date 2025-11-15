@@ -1,245 +1,154 @@
-import { getCurrentUserAndProfile, getDisplayName } from "@/lib/supabase/auth"
-import { withAuthRetry } from "@/lib/supabase/auth"
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { Badge } from "@/components/ui/badge"
-import { BookOpen, Clock, Award, Play, Plus, Target } from "lucide-react"
-import Link from "next/link"
-import { signOut } from "@/lib/actions"
-import ProgressAnalytics from "@/components/dashboard/progress-analytics"
-import LearningRecommendations from "@/components/dashboard/learning-recommendations"
+import { redirect } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { BookOpen, LogOut, GraduationCap, Map, User } from "lucide-react";
+import Link from "next/link";
+import { signOut } from "@/lib/actions";
+import { getCurrentUser } from "@/lib/firebase/server";
 
 export default async function DashboardPage() {
-  const supabase = createClient()
+  const user = await getCurrentUser();
 
-  let state = {
-    userProgress: [] as any[],
-    recentCourses: [] as any[],
-    profile: null as any,
-    user: null as any,
-    displayName: "Usuario",
-    completedCourses: 0,
-    inProgressCourses: 0,
-    totalTimeSpent: 0,
-    averageProgress: 0,
+  if (!user) {
+    redirect("/auth/login");
   }
-  
-  try {
-    const userAndProfile = await getCurrentUserAndProfile(supabase as any)
-    state.user = userAndProfile.user
-    state.profile = userAndProfile.profile
 
-    // Get user's enrolled courses with progress with retry
-  const progressResult: any = await withAuthRetry(() =>
-      ((supabase.from("user_progress") as any).select(`
-        *,
-        courses (
-          id,
-          title,
-          description,
-          category,
-          difficulty_level,
-          estimated_duration
-        )
-      `) as any)
-        .eq("user_id", state.user.id)
-        .order("last_accessed", { ascending: false })
-    )
-    state.userProgress = progressResult.data || []
-
-    // Get recent courses for recommendations with retry
-  const coursesResult: any = await withAuthRetry(() =>
-      ((supabase.from("courses") as any).select("*") as any)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(6)
-    )
-    state.recentCourses = coursesResult.data || []
-
-    // Calculate metrics
-    state.completedCourses = state.userProgress?.filter((p: any) => p.status === "completed").length || 0
-    state.inProgressCourses = state.userProgress?.filter((p: any) => p.status === "in_progress").length || 0
-    state.totalTimeSpent = state.userProgress?.reduce((total: number, p: any) => total + (p.time_spent || 0), 0) || 0
-    state.averageProgress = state.userProgress?.length > 0
-      ? Math.round(state.userProgress.reduce((sum: number, p: any) => sum + p.progress_percentage, 0) / state.userProgress.length)
-      : 0
-
-    state.displayName = getDisplayName(state.user, state.profile)
-
-  } catch (error) {
-    console.error("Authentication error:", error)
-    redirect("/auth/login")
-  }
+  const isAdmin = user.email?.includes("@alumno.buap.mx");
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex justify-between items-center">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">¡Hola, {state.displayName}!</h1>
-                <p className="text-gray-600 mt-1">Continúa tu viaje de aprendizaje</p>
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-600 mt-2">Bienvenido, {user.email}</p>
+          </div>
+          <form action={signOut}>
+            <Button type="submit" variant="outline" size="sm">
+              <LogOut className="w-4 h-4 mr-2" />
+              Cerrar sesión
+            </Button>
+          </form>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-3 mb-8">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <User className="w-5 h-5" />
+                Tu Perfil
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm text-gray-500">Email</p>
+                  <p className="font-medium">{user.email}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Tipo de cuenta</p>
+                  <p className="font-medium">
+                    {isAdmin ? "Administrador" : "Estudiante"}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <BookOpen className="w-5 h-5" />
+                Cursos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/courses">
+                <Button className="w-full">Ver Cursos Disponibles</Button>
+              </Link>
+              {isAdmin && (
+                <Link href="/manage">
+                  <Button className="w-full" variant="outline">
+                    Gestionar Mis Cursos
+                  </Button>
+                </Link>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Map className="w-5 h-5" />
+                Rutas de Aprendizaje
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/learning-paths">
+                <Button className="w-full" variant="outline">
+                  Ver Rutas
+                </Button>
+              </Link>
+              <Link href="/learning-paths/create">
+                <Button className="w-full" variant="outline">
+                  Crear Nueva Ruta
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <GraduationCap className="w-5 h-5" />
+              Estado de la Migración a Firebase
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-1 text-green-600">✅</div>
+                <div>
+                  <p className="font-medium text-green-900">
+                    Autenticación Migrada
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    El sistema de login y registro ahora funciona completamente
+                    con Firebase Authentication.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="mt-1 text-amber-600">⚠️</div>
+                <div>
+                  <p className="font-medium text-amber-900">
+                    Datos en Migración
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Las siguientes funcionalidades requieren migración de datos:
+                  </p>
+                  <div className="mt-2 text-sm text-gray-600 space-y-1 ml-4">
+                    <div>• Cursos y contenido</div>
+                    <div>• Progreso de usuario</div>
+                    <div>• Rutas de aprendizaje</div>
+                    <div>• Certificados</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t">
+                <p className="text-sm text-gray-600">
+                  <b>Próximos pasos:</b> Los datos de cursos deben ser creados
+                  nuevamente en Firestore o migrados desde Supabase. La
+                  estructura de autenticación ya está completamente funcional.
+                </p>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Enhanced Stats Cards */}
-  <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Cursos Completados</CardTitle>
-              <Award className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{state.completedCourses}</div>
-              <p className="text-xs text-muted-foreground">
-                {state.completedCourses > 0 ? `+${Math.round(state.completedCourses * 0.2)} este mes` : "Completa tu primero"}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">En Progreso</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{state.inProgressCourses}</div>
-              <p className="text-xs text-muted-foreground">Progreso promedio: {state.averageProgress}%</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tiempo Total</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{Math.floor(state.totalTimeSpent / 60)}h</div>
-              <p className="text-xs text-muted-foreground">{Math.round(state.totalTimeSpent % 60)}min adicionales</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Promedio General</CardTitle>
-              <Award className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{state.averageProgress}%</div>
-              <p className="text-xs text-muted-foreground">Progreso promedio acumulado</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Continue Learning */}
-          <div className="lg:col-span-2 space-y-8">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Continúa Aprendiendo</h2>
-
-              {state.userProgress && state.userProgress.length > 0 ? (
-                <div className="space-y-4">
-                  {state.userProgress.slice(0, 3).map((progress: any) => (
-                    <Card key={progress.id} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-2">{progress.courses?.title}</h3>
-                            <p className="text-gray-600 text-sm mb-4">{progress.courses?.description}</p>
-                            <div className="flex items-center space-x-4 mb-4">
-                              <Badge variant="secondary">{progress.courses?.category}</Badge>
-                              <div className="flex items-center text-sm text-gray-500">
-                                <Clock className="h-4 w-4 mr-1" />
-                                {Math.floor((progress.courses?.estimated_duration || 0) / 60)}h
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-medium text-gray-700">Progreso</span>
-                              <span className="text-sm text-gray-500">{progress.progress_percentage}%</span>
-                            </div>
-                            <Progress value={progress.progress_percentage} className="h-2" />
-                          </div>
-                          <div className="ml-6">
-                            <Link href={`/learn/${progress.course_id}`}>
-                              <Button className="bg-primary hover:bg-primary-hover text-white">
-                                <Play className="h-4 w-4 mr-2" />
-                                Continuar
-                              </Button>
-                            </Link>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card>
-                  <CardContent className="p-8 text-center">
-                    <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">¡Comienza tu primer curso!</h3>
-                    <p className="text-gray-600 mb-4">Explora nuestro catálogo y encuentra el curso perfecto para ti</p>
-                    <Link href="/courses">
-                      <Button className="bg-primary hover:bg-primary-hover text-white">Explorar Cursos</Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-
-            <ProgressAnalytics userProgress={state.userProgress || []} profile={state.profile} />
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            <LearningRecommendations
-              userProgress={state.userProgress || []}
-              profile={state.profile}
-              courses={state.recentCourses || []}
-            />
-
-            {/* Learning Goals (real, simple metrics) */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Objetivos de Aprendizaje</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Cursos en progreso</span>
-                      <span>{state.inProgressCourses}</span>
-                    </div>
-                    <Progress value={Math.min(100, (state.inProgressCourses / Math.max(1, (state.inProgressCourses + state.completedCourses))) * 100)} className="h-2" />
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Progreso general</span>
-                      <span>{state.averageProgress}%</span>
-                    </div>
-                    <Progress value={state.averageProgress} className="h-2" />
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Cursos este año</span>
-                      <span>{state.completedCourses}/5 cursos</span>
-                    </div>
-                    <Progress value={(state.completedCourses / 5) * 100} className="h-2" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
-  )
+  );
 }

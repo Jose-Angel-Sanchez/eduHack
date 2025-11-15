@@ -1,25 +1,31 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useEffect, useState } from "react"
-import { usePathname } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import SuperUserBadge from "@/components/ui/super-user-badge"
-import { signOut } from "@/lib/actions"
-import { Brain, Menu } from "lucide-react"
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import SuperUserBadge from "@/components/ui/super-user-badge";
+import { signOut } from "@/lib/actions";
+import { Brain, Menu } from "lucide-react";
 
 interface SiteNavbarProps {
-  user: { id: string; email?: string | null } | null
+  user: {
+    uid: string;
+    email: string | null;
+    displayName?: string | null;
+    photoURL?: string | null;
+    emailVerified?: boolean;
+  } | null;
 }
 
 export default function SiteNavbar({ user }: SiteNavbarProps) {
-  const [open, setOpen] = useState(false)
-  const pathname = usePathname()
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
 
   // Close the menu on route change
   useEffect(() => {
-    setOpen(false)
-  }, [pathname])
+    setOpen(false);
+  }, [pathname]);
 
   return (
     <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
@@ -28,7 +34,9 @@ export default function SiteNavbar({ user }: SiteNavbarProps) {
           <div className="flex items-center space-x-2">
             <Link href="/" className="flex items-center space-x-2">
               <Brain className="h-7 w-7 text-primary" />
-              <span className="text-xl font-semibold text-gray-900">inspiraT</span>
+              <span className="text-xl font-semibold text-gray-900">
+                inspiraT
+              </span>
             </Link>
             {user && <SuperUserBadge user={user} />}
           </div>
@@ -40,7 +48,10 @@ export default function SiteNavbar({ user }: SiteNavbarProps) {
                 {user.email?.includes("@alumno.buap.mx") && (
                   <>
                     <Link href="/manage">
-                      <Button variant="ghost" className="hover:bg-blue-700 text-green-600">
+                      <Button
+                        variant="ghost"
+                        className="hover:bg-blue-700 text-green-600"
+                      >
                         Gestión de Cursos
                       </Button>
                     </Link>
@@ -59,7 +70,9 @@ export default function SiteNavbar({ user }: SiteNavbarProps) {
                   <Button variant="ghost">FAQ</Button>
                 </Link>
                 <form action={signOut}>
-                  <Button variant="outline" type="submit">Cerrar Sesión</Button>
+                  <Button variant="outline" type="submit">
+                    Cerrar Sesión
+                  </Button>
                 </form>
               </>
             ) : (
@@ -105,39 +118,85 @@ export default function SiteNavbar({ user }: SiteNavbarProps) {
           >
             <div className="flex flex-col gap-1">
               <Link href="/courses" className="w-full">
-                <Button onClick={() => setOpen(false)} variant="ghost" className="w-full justify-start">Cursos</Button>
+                <Button
+                  onClick={() => setOpen(false)}
+                  variant="ghost"
+                  className="w-full justify-start"
+                >
+                  Cursos
+                </Button>
               </Link>
               <Link href="/learning-paths" className="w-full">
-                <Button onClick={() => setOpen(false)} variant="ghost" className="w-full justify-start">Rutas</Button>
+                <Button
+                  onClick={() => setOpen(false)}
+                  variant="ghost"
+                  className="w-full justify-start"
+                >
+                  Rutas
+                </Button>
               </Link>
               {user ? (
                 <>
                   {user.email?.includes("@alumno.buap.mx") && (
                     <>
                       <Link href="/manage" className="w-full">
-                        <Button onClick={() => setOpen(false)} variant="default" className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white">
+                        <Button
+                          onClick={() => setOpen(false)}
+                          variant="default"
+                          className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white"
+                        >
                           🚀 Gestión de Cursos
                         </Button>
                       </Link>
                       <Link href="/manage" className="w-full">
-                        <Button onClick={() => setOpen(false)} variant="ghost" className="w-full justify-start">Administrar</Button>
+                        <Button
+                          onClick={() => setOpen(false)}
+                          variant="ghost"
+                          className="w-full justify-start"
+                        >
+                          Administrar
+                        </Button>
                       </Link>
                       <Link href="/admin/content" className="w-full">
-                        <Button onClick={() => setOpen(false)} variant="ghost" className="w-full justify-start">Contenido</Button>
+                        <Button
+                          onClick={() => setOpen(false)}
+                          variant="ghost"
+                          className="w-full justify-start"
+                        >
+                          Contenido
+                        </Button>
                       </Link>
                     </>
                   )}
                   <form action={signOut} className="w-full">
-                    <Button onClick={() => setOpen(false)} variant="outline" type="submit" className="w-full justify-start">Cerrar Sesión</Button>
+                    <Button
+                      onClick={() => setOpen(false)}
+                      variant="outline"
+                      type="submit"
+                      className="w-full justify-start"
+                    >
+                      Cerrar Sesión
+                    </Button>
                   </form>
                 </>
               ) : (
                 <>
                   <Link href="/auth/login" className="w-full">
-                    <Button onClick={() => setOpen(false)} variant="ghost" className="w-full justify-start">Ingresar</Button>
+                    <Button
+                      onClick={() => setOpen(false)}
+                      variant="ghost"
+                      className="w-full justify-start"
+                    >
+                      Ingresar
+                    </Button>
                   </Link>
                   <Link href="/auth/register" className="w-full">
-                    <Button onClick={() => setOpen(false)} className="w-full justify-start bg-primary text-white">Registrarse</Button>
+                    <Button
+                      onClick={() => setOpen(false)}
+                      className="w-full justify-start bg-primary text-white"
+                    >
+                      Registrarse
+                    </Button>
                   </Link>
                 </>
               )}
@@ -146,5 +205,5 @@ export default function SiteNavbar({ user }: SiteNavbarProps) {
         </div>
       </div>
     </header>
-  )
+  );
 }
