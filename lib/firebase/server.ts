@@ -1,6 +1,22 @@
 import { cookies } from "next/headers";
-import { initializeApp, getApps, cert, App } from "firebase-admin/app";
-import { getAuth, Auth } from "firebase-admin/auth";
+// Dynamic admin import will avoid build-time resolution errors if firebase-admin isn't installed yet
+type App = any
+type Auth = any
+let initializeApp: any, getApps: any, cert: any, getAuth: any
+async function ensureAdminImported() {
+  if (!initializeApp) {
+    try {
+      const appMod = await import('firebase-admin/app')
+      initializeApp = appMod.initializeApp
+      getApps = appMod.getApps
+      cert = appMod.cert
+      const authMod = await import('firebase-admin/auth')
+      getAuth = authMod.getAuth
+    } catch (e) {
+      console.error('🔥 No se pudo importar firebase-admin dinámicamente:', e)
+    }
+  }
+}
 
 let adminApp: App | null = null;
 let adminAuth: Auth | null = null;
@@ -30,7 +46,12 @@ const isAdminConfigured =
   process.env.FIREBASE_PRIVATE_KEY.length > 0;
 
 // Inicializar Firebase Admin (solo en el servidor y si está configurado)
-if (isAdminConfigured && getApps().length === 0) {
+if (isAdminConfigured) {
+  // Attempt dynamic import before initializing
+  await ensureAdminImported()
+}
+
+if (isAdminConfigured && getApps && getApps().length === 0) {
   try {
     console.log("🔧 Intentando inicializar Firebase Admin...");
     adminApp = initializeApp({
@@ -49,9 +70,9 @@ if (isAdminConfigured && getApps().length === 0) {
   if (!isAdminConfigured) {
     console.warn("⚠️ isAdminConfigured = false");
   }
-  if (getApps().length > 0) {
+  if (getApps && getApps().length > 0) {
     console.log("ℹ️ Firebase Admin ya estaba inicializado");
-    adminAuth = getAuth();
+    adminAuth = getAuth ? getAuth() : null;
   }
 }
 
@@ -94,4 +115,23 @@ export function isFirebaseConfigured() {
   return isAdminConfigured;
 }
 
-export { adminAuth as auth };
+export async function getAdminAuth(): Promise<Auth | null> {
+  if (!adminAuth && isAdminConfigured) {
+    await ensureAdminImported()
+    if (getApps && getApps().length === 0 && initializeApp && cert && getAuth) {
+      try {
+        adminApp = initializeApp({
+          credential: cert({
+            projectId: process.env.FIREBASE_PROJECT_ID!,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, '\n')
+          })
+        })
+        adminAuth = getAuth(adminApp)
+      } catch (e) {
+        console.error('No se pudo inicializar Firebase Admin (petición tardía):', e)
+      }
+    }
+  }
+  return adminAuth
+}

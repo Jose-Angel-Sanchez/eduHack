@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth } from "../../src/infrastructure/firebase/client"
 import { useAuth } from "@/components/providers/auth-provider-enhanced"
 
 const CATEGORIES = [
@@ -49,7 +49,7 @@ export default function CourseFormMinimal({
   const [learningObjectivesText, setLearningObjectivesText] = useState("")
   const [message, setMessage] = useState("")
   
-  const supabase = createClient()
+  const authFirebase = getFirebaseAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -76,13 +76,13 @@ export default function CourseFormMinimal({
         return
       }
 
-      // Create course via server API to leverage server-side session (RLS-friendly)
+      // Crear curso vía API Firebase
       const learning_objectives = learningObjectivesText
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean)
 
-      const resp = await fetch('/api/courses/create', {
+      const resp = await fetch('/api/v3/courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

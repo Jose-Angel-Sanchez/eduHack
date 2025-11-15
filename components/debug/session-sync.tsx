@@ -1,78 +1,35 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth } from "../../src/infrastructure/firebase/client"
+import { getFirestoreDb } from "../../src/infrastructure/firebase/client"
+import { doc, getDoc } from "firebase/firestore"
 
 export default function SessionSync() {
   const [syncStatus, setSyncStatus] = useState<string>("🔄 Sincronizando...")
+  const [profile, setProfile] = useState<any | null>(null)
   
   useEffect(() => {
     const syncSession = async () => {
       try {
-        const supabase = createClient()
-        
-        // Intentar múltiples métodos de autenticación
-        setSyncStatus("🔄 Verificando sesión actual...")
-        
-        // Método 1: getSession
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        
-        if (session) {
-          setSyncStatus("✅ Sesión encontrada y sincronizada")
+        setSyncStatus("🔄 Verificando sesión Firebase...")
+        const auth = getFirebaseAuth()
+        const user = auth.currentUser
+        if (!user) {
+          setSyncStatus("❌ No hay sesión activa")
           return
         }
-        
-        setSyncStatus("🔄 Intentando refrescar token...")
-        
-        // Método 2: refreshSession
-        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
-        
-        if (refreshedSession) {
-          setSyncStatus("✅ Token refrescado y sesión sincronizada")
-          return
+        setSyncStatus("✅ Sesión activa, cargando perfil...")
+        try {
+          const db = getFirestoreDb()
+          const snap = await getDoc(doc(db, 'profiles', user.uid))
+          setProfile(snap.exists() ? snap.data() : null)
+          setSyncStatus("✅ Perfil cargado")
+        } catch (e) {
+          setSyncStatus("⚠️ Sesión sin perfil (profiles/<uid> inexistente)")
         }
-        
-        // Método 3: Verificar si hay tokens en localStorage
-        setSyncStatus("🔄 Verificando localStorage...")
-        
-        const localStorageKeys = Object.keys(localStorage).filter(key => 
-          key.includes('supabase') || key.includes('auth')
-        )
-        
-        if (localStorageKeys.length > 0) {
-          setSyncStatus(`⚠️ Tokens encontrados en localStorage: ${localStorageKeys.length}`)
-          
-          // Intentar restaurar desde localStorage
-          for (const key of localStorageKeys) {
-            const value = localStorage.getItem(key)
-            if (value && value.includes('access_token')) {
-              setSyncStatus("🔄 Intentando restaurar desde localStorage...")
-              
-              try {
-                const parsed = JSON.parse(value)
-                if (parsed.access_token) {
-                  // Intentar setear la sesión manualmente
-                  const { error: setError } = await supabase.auth.setSession({
-                    access_token: parsed.access_token,
-                    refresh_token: parsed.refresh_token
-                  })
-                  
-                  if (!setError) {
-                    setSyncStatus("✅ Sesión restaurada desde localStorage")
-                    return
-                  }
-                }
-              } catch (e) {
-                console.log("Error parsing localStorage:", e)
-              }
-            }
-          }
-        }
-        
-        setSyncStatus("❌ No se pudo sincronizar la sesión")
-        
       } catch (error) {
-        console.error("Error en sincronización:", error)
+        console.error("Error en sincronización Firebase:", error)
         setSyncStatus(`❌ Error: ${error instanceof Error ? error.message : 'Desconocido'}`)
       }
     }
@@ -81,8 +38,13 @@ export default function SessionSync() {
   }, [])
   
   return (
-    <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm">
-      <strong>🔄 Sincronización de Sesión:</strong> {syncStatus}
+    <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm space-y-2">
+      <div><strong>🔄 Estado Sesión:</strong> {syncStatus}</div>
+      {profile && (
+        <div className="text-xs bg-white/60 p-2 rounded border">
+          <strong>Perfil:</strong> {JSON.stringify(profile)}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth } from "../../src/infrastructure/firebase/client"
+import { getFirestoreDb } from "../../src/infrastructure/firebase/client"
+import { doc, getDoc } from "firebase/firestore"
 
 export default function SessionDebug() {
   const [sessionInfo, setSessionInfo] = useState<any>(null)
@@ -9,30 +11,29 @@ export default function SessionDebug() {
   
   useEffect(() => {
     const checkSession = async () => {
-      const supabase = createClient()
-      
+      const auth = getFirebaseAuth()
+      const db = getFirestoreDb()
       try {
-        // Verificar sesión actual
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        
-        // Verificar usuario actual
-        const { data: { user }, error: userError } = await supabase.auth.getUser()
-        
+        const currentUser = auth.currentUser
+        let profile: any = null
+        if (currentUser) {
+          try {
+            const snap = await getDoc(doc(db, 'profiles', currentUser.uid))
+            profile = snap.exists() ? snap.data() : null
+          } catch {}
+        }
         setSessionInfo({
-          session: session ? {
-            access_token: session.access_token ? "✅ Presente" : "❌ Ausente",
-            user_id: session.user?.id,
-            expires_at: session.expires_at ? new Date(session.expires_at * 1000).toLocaleString() : "No definido"
+          session: currentUser ? {
+            access_token: 'Firebase session',
+            user_id: currentUser.uid,
+            expires_at: 'Gestionado por Firebase'
           } : null,
-          user: user ? {
-            id: user.id,
-            email: user.email,
-            created_at: user.created_at
+          user: currentUser ? {
+            id: currentUser.uid,
+            email: currentUser.email,
+            created_at: profile?.createdAt || '—'
           } : null,
-          errors: {
-            session: sessionError?.message || null,
-            user: userError?.message || null
-          }
+          errors: {}
         })
       } catch (err) {
         setSessionInfo({
@@ -63,7 +64,7 @@ export default function SessionDebug() {
 
   return (
     <div className="p-4 border rounded bg-gray-50">
-      <h3 className="font-semibold mb-3 text-gray-800">🔍 Debug de Sesión Supabase</h3>
+      <h3 className="font-semibold mb-3 text-gray-800">🔍 Debug de Sesión Firebase</h3>
       
       <div className="grid md:grid-cols-2 gap-4 text-sm">
         {/* Sesión */}

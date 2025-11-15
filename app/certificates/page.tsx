@@ -1,27 +1,24 @@
-import { createClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/firebase/server"
+import { getFirestoreDb } from "@/src/infrastructure/firebase/client"
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore"
 import { redirect } from "next/navigation"
 import { CertificateGenerator } from "@/components/certificates/certificate-generator"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Award } from "lucide-react"
 
 export default async function CertificatesPage() {
-  const supabase = createClient() as any
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    redirect("/auth/login")
+  const user = await getCurrentUser()
+  if (!user) redirect('/auth/login')
+  let certificates: any[] = []
+  try {
+    const db = getFirestoreDb()
+    const col = collection(db, 'certificates')
+    const q = query(col, where('userId', '==', user.uid), orderBy('completionDate', 'desc'))
+    const snaps = await getDocs(q)
+    certificates = snaps.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Error fetching certificates', e)
   }
-
-  const { data: certificates } = await supabase
-    .from("certificates")
-    .select(`
-      *,
-      courses!certificates_course_id_fkey(title, duration, skills)
-    `)
-    .eq("user_id", user.id)
-    .order("completion_date", { ascending: false })
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -32,19 +29,19 @@ export default async function CertificatesPage() {
         </p>
       </div>
 
-      {certificates && certificates.length > 0 ? (
+      {certificates.length > 0 ? (
         <div className="space-y-6">
           {certificates.map((certificate: any) => (
             <CertificateGenerator
               key={certificate.id}
               certificate={{
                 id: certificate.id,
-                user_name: user.user_metadata?.full_name || user.email || "Usuario",
-                course_title: certificate.courses.title,
-                completion_date: certificate.completion_date,
-                certificate_id: certificate.certificate_id,
-                course_duration: certificate.courses.duration || "No especificado",
-                skills_learned: certificate.courses.skills || [],
+                user_name: user.displayName || user.email || 'Usuario',
+                course_title: certificate.courseTitle || 'Curso',
+                completion_date: certificate.completionDate || certificate.createdAt || new Date().toISOString(),
+                certificate_id: certificate.certificateId || certificate.id,
+                course_duration: certificate.courseDuration || 'No especificado',
+                skills_learned: certificate.skillsLearned || [],
               }}
             />
           ))}

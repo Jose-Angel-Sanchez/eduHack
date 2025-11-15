@@ -1,11 +1,18 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
+import { getFirebaseAuth } from "../../src/infrastructure/firebase/client"
+import { getFirestore, doc, getDoc } from "firebase/firestore"
+
+interface FirebaseUser {
+  uid: string
+  email?: string | null
+  displayName?: string | null
+}
 
 interface AuthContextType {
-  user: User | null
+  user: FirebaseUser | null
+  profile: any | null
   loading: boolean
   signOut: () => Promise<void>
   refreshSession: () => Promise<void>
@@ -13,6 +20,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  profile: null,
   loading: true,
   signOut: async () => {},
   refreshSession: async () => {}
@@ -20,94 +28,75 @@ const AuthContext = createContext<AuthContextType>({
 
 interface AuthProviderProps {
   children: React.ReactNode
-  initialUser?: User | null
+  initialUser?: FirebaseUser | null
 }
 
 export function AuthProvider({ children, initialUser }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(initialUser || null)
+  const [user, setUser] = useState<FirebaseUser | null>(initialUser || null)
+  const [profile, setProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(!initialUser)
-  const supabase = createClient()
+  const auth = getFirebaseAuth()
+  const db = getFirestore()
 
   const refreshSession = async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      
-      // Intentar refrescar la sesión
-      const { data: { session }, error } = await supabase.auth.refreshSession()
-      
-      if (error) {
-        console.error("Error refreshing session:", error.message)
-        
-        // Si no hay sesión, intentar obtener la sesión actual
-        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession()
-        
-        if (sessionError) {
-          console.error("Error getting session:", sessionError.message)
-          setUser(null)
-          return
+      const firebaseUser = auth.currentUser
+      if (firebaseUser) {
+        const basicUser: FirebaseUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName
         }
-        
-        setUser(currentSession?.user ?? null)
+        setUser(basicUser)
+        const ref = doc(db, 'profiles', firebaseUser.uid)
+        const snap = await getDoc(ref)
+        setProfile(snap.exists() ? snap.data() : null)
       } else {
-        setUser(session?.user ?? null)
+        setUser(null)
+        setProfile(null)
       }
-    } catch (error) {
-      console.error("Error in refreshSession:", error)
-      setUser(null)
+    } catch (e) {
+      console.warn('Error refreshing session', e)
+      setUser(null); setProfile(null)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    // Si ya tenemos un usuario inicial, no necesitamos cargar
-    if (initialUser) {
-      setUser(initialUser)
-      setLoading(false)
-      return
-    }
-
-    // Obtener sesión inicial solo si no tenemos usuario
-    const getInitialSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        if (error) {
-          console.error("Error getting initial session:", error.message)
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        const basicUser: FirebaseUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName
         }
-        setUser(session?.user ?? null)
-      } catch (error) {
-        console.error("Error:", error)
+        setUser(basicUser)
+        try {
+          const ref = doc(db, 'profiles', firebaseUser.uid)
+          const snap = await getDoc(ref)
+          setProfile(snap.exists() ? snap.data() : null)
+        } catch (e) {
+          console.warn('Error loading profile', e)
+          setProfile(null)
+        }
+      } else {
         setUser(null)
-      } finally {
-        setLoading(false)
+        setProfile(null)
       }
-    }
-
-    getInitialSession()
-
-    // Escuchar cambios de autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log("Auth state changed:", event, session?.user?.email)
-        setUser(session?.user ?? null)
-        setLoading(false)
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [initialUser, supabase.auth])
+      setLoading(false)
+    })
+    return () => unsubscribe()
+  }, [auth, db])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    await auth.signOut()
     setUser(null)
+    setProfile(null)
   }
 
-  const value = {
-    user,
-    loading,
-    signOut,
-    refreshSession
-  }
+  const value = { user, profile, loading, signOut, refreshSession }
 
   return (
     <AuthContext.Provider value={value}>

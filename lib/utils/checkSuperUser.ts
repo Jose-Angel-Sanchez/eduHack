@@ -1,20 +1,15 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+import { getCurrentUser } from "@/lib/firebase/server";
+import { redirect } from "next/navigation";
 
+// Firebase replacement for legacy Supabase super-user check.
 export async function checkSuperUser() {
-  const supabase = createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-
-  // No direct cookie access needed; rely on Supabase session
-
-  if (error || !user) {
-    redirect("/auth/login")
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/auth/login");
   }
-
-  // Verificar si el correo contiene @alumno.buap.mx
-  if (!user.email?.includes("@alumno.buap.mx")) {
-    redirect("/dashboard")
+  const email = (user as any).email || "";
+  if (!email.includes("@alumno.buap.mx")) {
+    redirect("/dashboard");
   }
-
-  return user
+  return user;
 }

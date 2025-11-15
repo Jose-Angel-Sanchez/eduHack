@@ -1,4 +1,6 @@
-import { createClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/firebase/server"
+import { getFirestoreDb } from "@/src/infrastructure/firebase/client"
+import { doc, getDoc } from "firebase/firestore"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,40 +11,20 @@ import { redirect, notFound } from "next/navigation"
 import EnrollButton from "@/components/courses/enroll-button"
 
 export default async function CoursePage({ params }: { params: Promise<{ id: string }> }) {
-  const supabase = createClient()
-
-  // Check authentication
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/auth/login")
-  }
-
-  // Fetch course details
+  const user = await getCurrentUser()
+  if (!user) redirect('/auth/login')
   const { id } = await params
-  const { data: course, error } = await ((supabase.from("courses") as any)
-    .select(`
-      *,
-      ratings:feedback(rating, user_id, feedback_type),
-      enrollments:user_progress(user_id),
-      sections:course_sections(id)
-    `)
-    .eq("id", id)
-    .eq("is_active", true)
-    .single())
-
-  if (error || !course) {
-    notFound()
+  let course: any = null
+  try {
+    const db = getFirestoreDb()
+    const snap = await getDoc(doc(db, 'courses', id))
+    if (snap.exists()) course = { id: snap.id, ...snap.data() }
+  } catch (e) {
+    console.error('Error loading course', e)
   }
-
-  // Check if user is enrolled and get progress
-  const { data: userProgress } = await ((supabase.from("user_progress") as any)
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("course_id", id)
-    .maybeSingle())
+  if (!course || course.isActive === false) notFound()
+  // Enrollment & progress migration pending – placeholder values
+  const userProgress: any = null
 
   const getDifficultyColor = (level: string) => {
     switch (level) {
@@ -72,12 +54,12 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
 
   const isEnrolled = !!userProgress
   const progressPercentage = userProgress?.progress_percentage || 0
-  const enrolledCount = (course as any)?.enrollments?.length || 0
-  const ratingsArr = (((course as any)?.ratings) || []).filter((r: any) => r.feedback_type === 'course' || r.feedback_type == null)
+  const enrolledCount = (course.enrollments?.length || 0)
+  const ratingsArr = (course.ratings || [])
   const averageRating = ratingsArr.length
     ? (ratingsArr.reduce((acc: number, r: any) => acc + (r.rating || 0), 0) / ratingsArr.length).toFixed(1)
     : '0.0'
-  const modulesCount = ((course as any)?.sections?.length ?? (course as any)?.content?.modules?.length ?? 0)
+  const modulesCount = (course.sections?.length || 0)
   const hasContent = modulesCount > 0
 
   return (
@@ -91,8 +73,8 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
             {/* Course Info */}
             <div className="lg:col-span-2">
               <div className="flex items-center space-x-3 mb-4">
-                <Badge className={getDifficultyColor(course.difficulty_level)}>
-                  {getDifficultyLabel(course.difficulty_level)}
+                <Badge className={getDifficultyColor(course.difficultyLevel)}>
+                  {getDifficultyLabel(course.difficultyLevel)}
                 </Badge>
                 <Badge variant="secondary">{course.category}</Badge>
               </div>
@@ -104,7 +86,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                 <div className="flex items-center space-x-1">
                   <Clock className="h-4 w-4" />
                   <span>
-                    {Math.floor(course.estimated_duration / 60)}h {course.estimated_duration % 60}m
+                    {Math.floor((course.estimatedDuration || 0) / 60)}h {(course.estimatedDuration || 0) % 60}m
                   </span>
                 </div>
                 <div className="flex items-center space-x-1">
@@ -147,7 +129,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                 </CardHeader>
                 {hasContent && (
                   <CardContent>
-                    <EnrollButton courseId={course.id} isEnrolled={isEnrolled} userId={user.id} />
+                    <EnrollButton courseId={course.id} isEnrolled={isEnrolled} userId={user.uid} />
                   </CardContent>
                 )}
               </Card>

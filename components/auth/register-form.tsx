@@ -1,39 +1,51 @@
 "use client"
 
-import { useActionState } from "react"
-import { useFormStatus } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, Mail, Lock, User, Eye, EyeOff, AtSign } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
-import { signUp } from "@/lib/actions"
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-
-  return (
-    <Button
-      type="submit"
-      disabled={pending}
-      className="w-full bg-secondary hover:bg-secondary-hover text-white py-3 text-lg font-medium rounded-lg h-12"
-    >
-      {pending ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Creando cuenta...
-        </>
-      ) : (
-        "Crear Cuenta"
-      )}
-    </Button>
-  )
-}
-
-export default function   RegisterForm() {
-  const [state, formAction] = useActionState(signUp, null)
+export default function RegisterForm() {
   const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setError(null)
+    setSuccess(null)
+    const form = e.currentTarget
+    const fullName = (form.elements.namedItem("fullName") as HTMLInputElement)?.value
+    const username = (form.elements.namedItem("username") as HTMLInputElement)?.value
+    const email = (form.elements.namedItem("email") as HTMLInputElement)?.value
+    const password = (form.elements.namedItem("password") as HTMLInputElement)?.value
+    if (!email || !password || !username) {
+      setError("Datos requeridos incompletos")
+      return
+    }
+    setLoading(true)
+    try {
+      const resp = await fetch("/api/v3/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, fullName, username })
+      })
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        setError(data?.error || "Error creando cuenta")
+        return
+      }
+      setSuccess("Cuenta creada correctamente. Ahora puedes iniciar sesión.")
+      form.reset()
+    } catch (err: any) {
+      setError(err.message || "Error inesperado")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <Card className="w-full max-w-md shadow-xl border-0 bg-white/95 backdrop-blur-sm">
@@ -45,16 +57,16 @@ export default function   RegisterForm() {
       </CardHeader>
 
       <CardContent>
-        <form action={formAction} className="space-y-6">
-          {state?.error && (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {state.error}
+              {error}
             </div>
           )}
 
-          {state?.success && (
+          {success && (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
-              {state.success}
+              {success}
             </div>
           )}
 
@@ -140,7 +152,20 @@ export default function   RegisterForm() {
             </div>
           </div>
 
-          <SubmitButton />
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-secondary hover:bg-secondary-hover text-white py-3 text-lg font-medium rounded-lg h-12"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creando cuenta...
+              </>
+            ) : (
+              "Crear Cuenta"
+            )}
+          </Button>
 
           <div className="text-center text-gray-600">
             ¿Ya tienes una cuenta?{" "}

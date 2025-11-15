@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth, getFirestoreDb } from "../../src/infrastructure/firebase/client"
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, orderBy } from "firebase/firestore"
 import { useToast } from "@/components/ui/use-toast-simple"
 import { Plus, Edit2, Trash2, Save, X, Video, FileText, HelpCircle, Upload } from "lucide-react"
 
@@ -46,26 +47,23 @@ export default function SectionContentManager({ sectionId, sectionTitle }: {
   })
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient()
+  const auth = getFirebaseAuth()
+  const db = getFirestoreDb()
 
   // Cargar contenido de la sección
   const fetchContent = async () => {
     try {
-      const { data, error } = await supabase
-        .from("section_content")
-        .select("*")
-        .eq("section_id", sectionId)
-        .order("order_index", { ascending: true })
-
-      if (error) throw error
-      setContents(data || [])
+      const q = query(
+        collection(db, "section_content"),
+        where("section_id", "==", sectionId)
+      )
+      const snap = await getDocs(q)
+      const list = snap.docs.map(d => d.data() as SectionContent)
+      list.sort((a,b) => (a.order_index || 0) - (b.order_index || 0))
+      setContents(list)
     } catch (error) {
       console.error("Error fetching content:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo cargar el contenido de la sección.",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "No se pudo cargar el contenido de la sección.", variant: "destructive" })
     }
   }
 
@@ -90,23 +88,26 @@ export default function SectionContentManager({ sectionId, sectionTitle }: {
     try {
       const nextOrder = contents.length + 1
 
-      const { data, error } = await supabase
-        .from("section_content")
-        .insert({
-          section_id: sectionId,
-          title: newContent.title,
-          content_type: newContent.content_type,
-          content_data: getInitialContentData(newContent.content_type),
-          order_index: nextOrder,
-          is_required: newContent.is_required,
-          estimated_duration: newContent.estimated_duration,
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-
-      setContents([...contents, data])
+      const docRef = await addDoc(collection(db, "section_content"), {
+        section_id: sectionId,
+        title: newContent.title,
+        content_type: newContent.content_type,
+        content_data: getInitialContentData(newContent.content_type),
+        order_index: nextOrder,
+        is_required: newContent.is_required,
+        estimated_duration: newContent.estimated_duration,
+        createdAt: Date.now()
+      })
+      setContents([...contents, {
+        id: docRef.id,
+        section_id: sectionId,
+        title: newContent.title,
+        content_type: newContent.content_type,
+        content_data: getInitialContentData(newContent.content_type),
+        order_index: nextOrder,
+        is_required: newContent.is_required,
+        estimated_duration: newContent.estimated_duration
+      }])
       setNewContent({
         title: "",
         content_type: 'text',
@@ -156,13 +157,7 @@ export default function SectionContentManager({ sectionId, sectionTitle }: {
 
     setLoading(true)
     try {
-      const { error } = await supabase
-        .from("section_content")
-        .delete()
-        .eq("id", contentId)
-
-      if (error) throw error
-
+      await deleteDoc(doc(db, "section_content", contentId))
       setContents(contents.filter(content => content.id !== contentId))
       
       toast({

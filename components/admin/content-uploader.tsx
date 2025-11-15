@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createClient } from "@/lib/supabase/client"
+// Supabase eliminado: subida y registro de contenido vía endpoints /api/content/*
 import { useToast } from "../ui/use-toast"
 import { Loader2, Upload } from "lucide-react"
 
@@ -29,7 +29,7 @@ export default function ContentUploader({ userId, defaultCourseIds = [], lockToC
   const [courses, setCourses] = useState<{ id: string; title: string }[]>(initialCourses || [])
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>(defaultCourseIds)
   const { toast } = useToast()
-  const supabase = createClient()
+  // Supabase client removido
 
   // Extrae un mensaje útil desde diferentes formas de error
   const getErrorMessage = (err: unknown): string => {
@@ -52,15 +52,17 @@ export default function ContentUploader({ userId, defaultCourseIds = [], lockToC
   useEffect(() => {
     if (initialCourses && initialCourses.length > 0) return
     const loadCourses = async () => {
-      const { data, error } = await supabase
-        .from("courses")
-        .select("id, title")
-        .eq("created_by", userId)
-        .order("created_at", { ascending: false })
-      if (!error && data) setCourses(data as any)
+      try {
+        const resp = await fetch('/api/v3/courses', { cache: 'no-store' })
+        if (!resp.ok) return
+        const json = await resp.json().catch(()=>({}))
+        const list = (json?.courses || []) as any[]
+        const mine = list.filter(c=> c.createdBy === userId || c.created_by === userId)
+        setCourses(mine.map(c => ({ id: c.id, title: c.title })))
+      } catch {}
     }
     loadCourses()
-  }, [supabase, userId, initialCourses?.length])
+  }, [userId, initialCourses?.length])
 
   // Keep courses in sync when server-provided list changes
   useEffect(() => {

@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth, getFirestoreDb } from "../../src/infrastructure/firebase/client"
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, orderBy, updateDoc } from "firebase/firestore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -24,22 +25,22 @@ interface SectionItem {
 }
 
 export default function ManageCourseContent({ userId, courseId }: { userId: string; courseId: string }) {
-  const supabase = createClient()
+  const auth = getFirebaseAuth()
+  const db = getFirestoreDb()
   const { toast } = useToast()
   const [sections, setSections] = useState<Section[]>([])
   const [loading, setLoading] = useState(true)
   const [newSectionTitle, setNewSectionTitle] = useState("")
 
   const load = async () => {
-    const { data, error } = await supabase
-      .from("course_sections")
-      .select("*")
-      .eq("course_id", courseId)
-      .order("order_index", { ascending: true })
-    if (error) {
+    try {
+      const q = query(collection(db, "course_sections"), where("course_id", "==", courseId))
+      const snap = await getDocs(q)
+      const list = snap.docs.map(d => d.data() as any)
+      list.sort((a,b) => (a.order_index||0)-(b.order_index||0))
+      setSections(list as Section[])
+    } catch(e) {
       toast({ variant: "destructive", description: "No se pudieron cargar las secciones." })
-    } else {
-      setSections(data || [])
     }
     setLoading(false)
   }
@@ -51,35 +52,29 @@ export default function ManageCourseContent({ userId, courseId }: { userId: stri
   const addSection = async () => {
     if (!newSectionTitle.trim()) return
     const nextIndex = (sections[sections.length - 1]?.order_index ?? 0) + 1
-    const { data, error } = await supabase
-      .from("course_sections")
-      .insert({
+    try {
+      const ref = await addDoc(collection(db, "course_sections"), {
         course_id: courseId,
         title: newSectionTitle.trim(),
         description: null,
         order_index: nextIndex,
+        createdAt: Date.now()
       })
-      .select("*")
-      .single()
-    if (error) {
-      toast({ variant: "destructive", description: "No se pudo crear la sección." })
-    } else {
-      setSections([...sections, data])
+      setSections([...sections, { id: ref.id, title: newSectionTitle.trim(), description: null, order_index: nextIndex } as Section])
       setNewSectionTitle("")
       toast({ description: "Sección creada." })
+    } catch(e) {
+      toast({ variant: "destructive", description: "No se pudo crear la sección." })
     }
   }
 
   const deleteSection = async (id: string) => {
-    const { error } = await supabase
-      .from("course_sections")
-      .delete()
-      .eq("id", id)
-    if (error) {
-      toast({ variant: "destructive", description: "No se pudo eliminar la sección." })
-    } else {
+    try {
+      await deleteDoc(doc(db, "course_sections", id))
       setSections(sections.filter((s) => s.id !== id))
       toast({ description: "Sección eliminada." })
+    } catch(e) {
+      toast({ variant: "destructive", description: "No se pudo eliminar la sección." })
     }
   }
 
@@ -102,22 +97,22 @@ export default function ManageCourseContent({ userId, courseId }: { userId: stri
 }
 
 function SectionEditor({ section, onDelete }: { section: Section; onDelete: () => void }) {
-  const supabase = createClient()
+  const auth = getFirebaseAuth()
+  const db = getFirestoreDb()
   const { toast } = useToast()
   const [items, setItems] = useState<SectionItem[]>([])
   const [loading, setLoading] = useState(true)
   const [title, setTitle] = useState(section.title)
 
   const load = async () => {
-    const { data, error } = await supabase
-      .from("section_content")
-      .select("*")
-      .eq("section_id", section.id)
-      .order("order_index", { ascending: true })
-    if (error) {
+    try {
+      const q = query(collection(db, "section_content"), where("section_id", "==", section.id))
+      const snap = await getDocs(q)
+      const list = snap.docs.map(d => ({ ...(d.data() as any) }))
+      list.sort((a,b)=> (a.order_index||0)-(b.order_index||0))
+      setItems(list as SectionItem[])
+    } catch(e) {
       toast({ variant: "destructive", description: "No se pudo cargar el contenido." })
-    } else {
-      setItems(data || [])
     }
     setLoading(false)
   }
@@ -127,38 +122,30 @@ function SectionEditor({ section, onDelete }: { section: Section; onDelete: () =
   }, [section.id])
 
   const saveTitle = async () => {
-    const { error } = await supabase
-      .from("course_sections")
-      .update({ title })
-      .eq("id", section.id)
-    if (error) toast({ variant: "destructive", description: "No se pudo guardar la sección." })
-    else toast({ description: "Sección actualizada." })
+    try {
+      await updateDoc(doc(db, "course_sections", section.id), { title })
+      toast({ description: "Sección actualizada." })
+    } catch(e) { toast({ variant: "destructive", description: "No se pudo guardar la sección." }) }
   }
 
   const addItem = async () => {
     const nextIndex = (items[items.length - 1]?.order_index ?? 0) + 1
-    const { data, error } = await supabase
-      .from("section_content")
-      .insert({
+    try {
+      const ref = await addDoc(collection(db, "section_content"), {
         section_id: section.id,
         title: "Nuevo contenido",
         content_type: "text",
         content: "",
         order_index: nextIndex,
+        createdAt: Date.now()
       })
-      .select("*")
-      .single()
-    if (error) toast({ variant: "destructive", description: "No se pudo crear el contenido." })
-    else setItems([...items, data])
+      setItems([...items, { id: ref.id, section_id: section.id, title: "Nuevo contenido", content_type: "text", content: "", order_index: nextIndex }])
+    } catch(e){ toast({ variant: "destructive", description: "No se pudo crear el contenido." }) }
   }
 
   const deleteItem = async (id: string) => {
-    const { error } = await supabase
-      .from("section_content")
-      .delete()
-      .eq("id", id)
-    if (error) toast({ variant: "destructive", description: "No se pudo eliminar el contenido." })
-    else setItems(items.filter((i) => i.id !== id))
+    try { await deleteDoc(doc(db, "section_content", id)); setItems(items.filter(i=>i.id!==id)) }
+    catch(e){ toast({ variant: "destructive", description: "No se pudo eliminar el contenido." }) }
   }
 
   if (loading) return <div className="p-2 border rounded">Cargando sección...</div>
@@ -183,18 +170,15 @@ function SectionEditor({ section, onDelete }: { section: Section; onDelete: () =
 }
 
 function ItemRow({ item, onDelete }: { item: SectionItem; onDelete: () => void }) {
-  const supabase = createClient()
+  const auth = getFirebaseAuth()
+  const db = getFirestoreDb()
   const { toast } = useToast()
   const [title, setTitle] = useState(item.title)
   const [content, setContent] = useState(item.content)
 
   const save = async () => {
-    const { error } = await supabase
-      .from("section_content")
-      .update({ title, content })
-      .eq("id", item.id)
-    if (error) toast({ variant: "destructive", description: "No se pudo guardar el contenido." })
-    else toast({ description: "Guardado." })
+    try { await updateDoc(doc(db, "section_content", item.id), { title, content }); toast({ description: "Guardado." }) }
+    catch(e){ toast({ variant: "destructive", description: "No se pudo guardar el contenido." }) }
   }
 
   return (

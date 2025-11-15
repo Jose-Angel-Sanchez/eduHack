@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+// Migrated from Supabase: now relies solely on server API endpoints backed by Firebase/Firestore
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -38,7 +38,7 @@ export default function ContentList({ userId }: { userId: string }) {
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient()
+  // Supabase removido: operaciones delegadas a endpoints /api/content/*
 
   const fetchContents = async () => {
     setIsLoading(true)

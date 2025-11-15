@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+// Supabase eliminado: se usará API server-side para listar/actualizar/eliminar
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -33,25 +33,17 @@ export default function ContentList({ userId }: { userId: string }) {
   const [editingContent, setEditingContent] = useState<Content | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient()
+  // Eliminado supabase client
 
   const fetchContents = async () => {
-    const { data, error } = await supabase
-      .from("content")
-      .select("*")
-      .eq("created_by", userId)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo cargar el contenido.",
-        variant: "destructive",
-      })
-      return
+    try {
+      const resp = await fetch(`/api/content/list?owner=${encodeURIComponent(userId)}`, { cache: 'no-store' })
+      if (!resp.ok) throw new Error(await resp.text().catch(()=>resp.statusText))
+      const json = await resp.json().catch(()=>({}))
+      setContents(json.data || [])
+    } catch (e:any) {
+      toast({ title: 'Error', description: 'No se pudo cargar el contenido.', variant: 'destructive' })
     }
-
-    setContents(data)
   }
 
   useEffect(() => {
@@ -64,45 +56,13 @@ export default function ContentList({ userId }: { userId: string }) {
     const contentToDelete = contents.find((c) => c.id === id)
     
     try {
-      // Si hay un archivo, eliminarlo del storage
-      if (contentToDelete?.file_path) {
-        await supabase.storage
-          .from("content")
-          .remove([contentToDelete.file_path])
-      } else if (contentToDelete?.file_url) {
-        // Fallback: try to extract after bucket name
-        const url = new URL(contentToDelete.file_url)
-        const parts = url.pathname.split("/")
-        const bucketIndex = parts.findIndex((p) => p === "content")
-        const path = bucketIndex >= 0 ? parts.slice(bucketIndex + 1).join("/") : ""
-        if (path) {
-          await supabase.storage
-            .from("content")
-            .remove([path])
-        }
-      }
-
-      // Eliminar el registro de la base de datos
-      const { error } = await supabase
-        .from("content")
-        .delete()
-        .eq("id", id)
-
-      if (error) throw error
-
-      toast({
-        title: "Contenido eliminado",
-        description: "El contenido se ha eliminado correctamente.",
-      })
-
-      setContents(contents.filter((c) => c.id !== id))
+      const resp = await fetch('/api/content/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+      if (!resp.ok) throw new Error(await resp.text().catch(()=>resp.statusText))
+      toast({ title: 'Contenido eliminado', description: 'El contenido se ha eliminado correctamente.' })
+      setContents(contents.filter(c=>c.id!==id))
     } catch (error) {
-      console.error("Error al eliminar:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo eliminar el contenido.",
-        variant: "destructive",
-      })
+      console.error('Error al eliminar:', error)
+      toast({ title: 'Error', description: 'No se pudo eliminar el contenido.', variant: 'destructive' })
     }
   }
 
@@ -111,35 +71,14 @@ export default function ContentList({ userId }: { userId: string }) {
     if (!editingContent) return
 
     try {
-      const { error } = await supabase
-        .from("content")
-        .update({
-          title: editingContent.title,
-          description: editingContent.description,
-          transcription: editingContent.transcription,
-        })
-        .eq("id", editingContent.id)
-
-      if (error) throw error
-
-      toast({
-        title: "Contenido actualizado",
-        description: "El contenido se ha actualizado correctamente.",
-      })
-
-      setContents(
-        contents.map((c) =>
-          c.id === editingContent.id ? editingContent : c
-        )
-      )
+      const resp = await fetch('/api/content/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingContent.id, title: editingContent.title, description: editingContent.description, transcription: editingContent.transcription }) })
+      if (!resp.ok) throw new Error(await resp.text().catch(()=>resp.statusText))
+      toast({ title: 'Contenido actualizado', description: 'El contenido se ha actualizado correctamente.' })
+      setContents(contents.map(c=> c.id===editingContent.id ? editingContent : c))
       setIsDialogOpen(false)
     } catch (error) {
-      console.error("Error al actualizar:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el contenido.",
-        variant: "destructive",
-      })
+      console.error('Error al actualizar:', error)
+      toast({ title: 'Error', description: 'No se pudo actualizar el contenido.', variant: 'destructive' })
     }
   }
 

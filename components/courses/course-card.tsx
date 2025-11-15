@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Clock, BookOpen, Users, Star, ChevronDown, ChevronUp } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth, getFirestoreDb } from "../../src/infrastructure/firebase/client"
+import { collection, query, where, getDocs, addDoc, serverTimestamp, limit, updateDoc, doc } from "firebase/firestore"
+// Migrated from Supabase to Firebase (Auth + Firestore)
 import EnrollButton from "./enroll-button"
 
 interface CourseCardProps {
@@ -15,7 +17,8 @@ interface CourseCardProps {
 }
 
 export default function CourseCard({ course, user }: CourseCardProps) {
-  const supabase = createClient()
+  const auth = getFirebaseAuth()
+  const db = getFirestoreDb()
   const getDifficultyColor = (level: string) => {
     switch ((level || '').toLowerCase()) {
       case 'beginner':
@@ -41,49 +44,48 @@ export default function CourseCard({ course, user }: CourseCardProps) {
         return level
     }
   }
-  const [localRating, setLocalRating] = useState(
-    course.ratings?.find((r: any) => r.user_id === user.id && (r.feedback_type === 'course' || r.feedback_type == null))?.rating || 0
-  )
+  const [localRating, setLocalRating] = useState<number>(0)
   const [isRating, setIsRating] = useState(false)
   const [showEnrolled, setShowEnrolled] = useState(false)
   const [enrolledUsers, setEnrolledUsers] = useState<Array<{ id: string; full_name: string; email: string }>>([])
+  const [isEnrolled, setIsEnrolled] = useState(false)
+  const [ratings, setRatings] = useState<any[]>([])
 
-  const getAverageRating = (ratings: any[]) => {
-    if (!ratings || ratings.length === 0) return 0
-    const sum = ratings
-      .filter((r: any) => (r.feedback_type === 'course' || r.feedback_type == null) && typeof r.rating === 'number')
-      .reduce((acc: number, curr: any) => acc + (curr.rating || 0), 0)
-    return (sum / ratings.length).toFixed(1)
+  const getAverageRating = (list: any[]) => {
+    if (!list || list.length === 0) return 0
+    const sum = list.reduce((acc: number, curr: any) => acc + (curr.rating || 0), 0)
+    return (sum / list.length).toFixed(1)
   }
 
-  const isUserEnrolled = (enrollments: any[], userId: string) => {
-    return enrollments?.some(e => e.user_id === userId) || false
-  }
+  const isUserEnrolled = () => isEnrolled
 
   const handleRating = async (courseId: string, rating: number) => {
     if (isRating) return
+    if (!auth.currentUser) return
     setIsRating(true)
     try {
-      // Try update feedback; if not exists, insert
-      const { error: updateErr } = await supabase
-        .from('feedback')
-        .update({ rating, feedback_type: 'course' })
-        .eq('course_id', courseId)
-        .eq('user_id', user.id)
-      if (updateErr) {
-        console.warn('Falling back to insert feedback:', updateErr?.message)
+      // Buscar rating existente del usuario
+      const existingQ = query(
+        collection(db, 'feedback'),
+        where('courseId', '==', courseId),
+        where('userId', '==', auth.currentUser.uid),
+        limit(1)
+      )
+      const snap = await getDocs(existingQ)
+      if (!snap.empty) {
+        // Actualizar documento existente
+        await updateDoc(doc(db, 'feedback', snap.docs[0].id), { rating, updatedAt: serverTimestamp() })
+      } else {
+        await addDoc(collection(db, 'feedback'), {
+          courseId,
+          userId: auth.currentUser.uid,
+          rating,
+          createdAt: serverTimestamp()
+        })
       }
-      if (updateErr) {
-        const { error: insertErr } = await supabase
-          .from('feedback')
-          .insert({ course_id: courseId, user_id: user.id, rating, feedback_type: 'course' })
-        if (insertErr) {
-          console.error('Error rating course:', insertErr)
-          return
-        }
-      }
-
       setLocalRating(rating)
+      // Refrescar listado de ratings
+      await loadRatings()
     } catch (error) {
       console.error('Error rating course:', error)
     } finally {
@@ -91,33 +93,69 @@ export default function CourseCard({ course, user }: CourseCardProps) {
     }
   }
 
+  const loadRatings = async () => {
+    try {
+      const qRatings = query(collection(db, 'feedback'), where('courseId', '==', course.id))
+      const snap = await getDocs(qRatings)
+      const list = snap.docs.map(d => d.data())
+      setRatings(list)
+      if (auth.currentUser) {
+        const own = list.find(r => r.userId === auth.currentUser!.uid)
+        if (own) setLocalRating(own.rating || 0)
+      }
+    } catch (e) {
+      console.warn('Error loading ratings:', e)
+    }
+  }
+
+  const loadEnrollmentStatus = async () => {
+    if (!auth.currentUser) return
+    try {
+      const qEnroll = query(
+        collection(db, 'enrollments'),
+        where('courseId', '==', course.id),
+        where('userId', '==', auth.currentUser.uid),
+        limit(1)
+      )
+      const snap = await getDocs(qEnroll)
+      setIsEnrolled(!snap.empty)
+    } catch (e) {
+      console.warn('Error checking enrollment:', e)
+    }
+  }
+
   // Load enrolled users' profiles when toggled open
   useEffect(() => {
-    const loadEnrolled = async () => {
+    // Cargar estado inicial (ratings y enrollment)
+    loadRatings()
+    loadEnrollmentStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [course.id])
+
+  useEffect(() => {
+    const loadEnrolledProfiles = async () => {
+      if (!showEnrolled) return
       try {
-        const userIds = (course.enrollments || []).map((e: any) => e.user_id)
+        // Obtener hasta N matriculados para listado (ampliar con paginación futura)
+        const qEnroll = query(collection(db, 'enrollments'), where('courseId', '==', course.id))
+        const snap = await getDocs(qEnroll)
+        const userIds = snap.docs.map(d => (d.data() as any).userId)
         if (userIds.length === 0) {
           setEnrolledUsers([])
           return
         }
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', userIds)
-        if (error) {
-          console.error('Error fetching enrolled profiles:', error)
-          return
-        }
-        setEnrolledUsers(data || [])
-      } catch (err) {
-        console.error('Error fetching enrolled profiles:', err)
+        // Cargar perfiles
+        const qProfiles = query(collection(db, 'profiles'), where('id', 'in', userIds.slice(0, 10)))
+        const pSnap = await getDocs(qProfiles)
+        const list = pSnap.docs.map(d => d.data() as any)
+        setEnrolledUsers(list.map(p => ({ id: p.id, full_name: p.full_name || '', email: p.email || '' })))
+      } catch (e) {
+        console.warn('Error loading enrolled profiles:', e)
       }
     }
-    if (showEnrolled) {
-      loadEnrolled()
-    }
+    loadEnrolledProfiles()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showEnrolled, course?.enrollments?.length])
+  }, [showEnrolled])
 
   return (
     <Card className="hover:shadow-lg transition-shadow duration-200">
@@ -160,7 +198,7 @@ export default function CourseCard({ course, user }: CourseCardProps) {
           <div className="flex items-center space-x-2">
             <div className="flex items-center">
               <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-              <span className="ml-1">{getAverageRating(course.ratings)}</span>
+              <span className="ml-1">{getAverageRating(ratings)}</span>
             </div>
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -170,7 +208,7 @@ export default function CourseCard({ course, user }: CourseCardProps) {
                   disabled={isRating}
                   className="focus:outline-none transition-colors duration-200"
                   aria-label={`Calificar ${star} estrellas`}
-                  title={isUserEnrolled(course.enrollments, user.id) ? `Calificar ${star}` : 'Inscríbete para calificar'}
+                  title={isUserEnrolled() ? `Calificar ${star}` : 'Inscríbete para calificar'}
                 >
                   <Star 
                     className={`h-4 w-4 ${
@@ -205,8 +243,8 @@ export default function CourseCard({ course, user }: CourseCardProps) {
         <div className="space-y-2">
           <EnrollButton
             courseId={course.id}
-            userId={user.id}
-            isEnrolled={isUserEnrolled(course.enrollments, user.id)}
+            userId={auth.currentUser?.uid || user.id}
+            isEnrolled={isUserEnrolled()}
           />
           <Link href={`/courses/${course.id}`}>
             <Button variant="outline" className="w-full">

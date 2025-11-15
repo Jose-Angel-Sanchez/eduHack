@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth, getFirestoreDb } from "../../src/infrastructure/firebase/client"
+import { collection, query, where, getDocs, addDoc, doc, deleteDoc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/components/ui/use-toast-simple"
 import { Plus, Edit2, Trash2, Save, X, ChevronDown, ChevronRight } from "lucide-react"
 import SectionContentManager from "./section-content-manager"
@@ -26,26 +27,20 @@ export default function CourseSectionsManager({ courseId }: { courseId: string }
   const [newSection, setNewSection] = useState({ title: "", description: "" })
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient()
+  const auth = getFirebaseAuth()
+  const db = getFirestoreDb()
 
   // Cargar secciones del curso
   const fetchSections = async () => {
     try {
-      const { data, error } = await supabase
-        .from("course_sections")
-        .select("*")
-        .eq("course_id", courseId)
-        .order("order_index", { ascending: true })
-
-      if (error) throw error
-      setSections(data || [])
+      const q = query(collection(db, "course_sections"), where("course_id", "==", courseId))
+      const snap = await getDocs(q)
+      const list = snap.docs.map(d => d.data() as Section)
+      list.sort((a,b)=> (a.order_index||0)-(b.order_index||0))
+      setSections(list)
     } catch (error) {
       console.error("Error fetching sections:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las secciones del curso.",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "No se pudieron cargar las secciones del curso.", variant: "destructive" })
     }
   }
 
@@ -70,20 +65,14 @@ export default function CourseSectionsManager({ courseId }: { courseId: string }
     try {
       const nextOrder = sections.length + 1
 
-      const { data, error } = await supabase
-        .from("course_sections")
-        .insert({
-          title: newSection.title,
-          description: newSection.description,
-          course_id: courseId,
-          order_index: nextOrder,
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-
-      setSections([...sections, data])
+      const ref = await addDoc(collection(db, "course_sections"), {
+        title: newSection.title,
+        description: newSection.description,
+        course_id: courseId,
+        order_index: nextOrder,
+        createdAt: Date.now()
+      })
+      setSections([...sections, { id: ref.id, title: newSection.title, description: newSection.description, course_id: courseId, order_index: nextOrder }])
       setNewSection({ title: "", description: "" })
       setIsCreating(false)
       
@@ -138,18 +127,8 @@ export default function CourseSectionsManager({ courseId }: { courseId: string }
   const handleUpdateSection = async (sectionId: string, updatedData: Partial<Section>) => {
     setLoading(true)
     try {
-      const { error } = await supabase
-        .from("course_sections")
-        .update(updatedData)
-        .eq("id", sectionId)
-
-      if (error) throw error
-
-      setSections(sections.map(section => 
-        section.id === sectionId 
-          ? { ...section, ...updatedData }
-          : section
-      ))
+      await updateDoc(doc(db, "course_sections", sectionId), { ...updatedData })
+      setSections(sections.map(section => section.id === sectionId ? { ...section, ...updatedData } : section))
       setEditingSection(null)
       
       toast({
@@ -187,13 +166,7 @@ export default function CourseSectionsManager({ courseId }: { courseId: string }
 
     setLoading(true)
     try {
-      const { error } = await supabase
-        .from("course_sections")
-        .delete()
-        .eq("id", sectionId)
-
-      if (error) throw error
-
+      await deleteDoc(doc(db, "course_sections", sectionId))
       setSections(sections.filter(section => section.id !== sectionId))
       
       toast({

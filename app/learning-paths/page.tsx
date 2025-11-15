@@ -1,5 +1,6 @@
-import { createClient, type Database } from "@/lib/supabase/server"
-import { SupabaseClient } from "@supabase/supabase-js"
+import { getCurrentUser } from "@/lib/firebase/server"
+import { getFirestoreDb } from "@/src/infrastructure/firebase/client"
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore"
 import { redirect } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -23,86 +24,26 @@ type LearningPath = Database['public']['Tables']['learning_paths']['Row'] & {
 export const dynamic = "force-dynamic"
 
 export default async function LearningPathsPage() {
-  const supabase = createClient() as SupabaseClient<Database>
-  let learningPaths: LearningPath[] = []
-
+  const user = await getCurrentUser()
+  if (!user) redirect('/auth/login')
+  let learningPaths: any[] = []
   try {
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError) {
-      console.error("Authentication error:", authError)
-      redirect("/auth/login")
-    }
-
-    if (!user) {
-      redirect("/auth/login")
-    }
-
-    // Get user's learning paths with progress
-    const { data: learningPathsData, error: fetchError } = await supabase
-      .from("learning_paths")
-      .select(`
-        *,
-        user_progress (
-          progress_percentage,
-          status,
-          courses (
-            title,
-            category
-          )
-        )
-      `)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-
-    if (fetchError) {
-      console.error("Error fetching learning paths:", fetchError)
-      throw new Error(`Failed to load learning paths: ${fetchError.message}`)
-    }
-
-    if (!learningPathsData) {
-      console.error("No learning paths data returned")
-      throw new Error("No learning paths data available")
-    }
-
-    learningPaths = learningPathsData as LearningPath[]
-  } catch (error) {
-    console.error("Error in learning paths page:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
-    return (
-      <div className="container mx-auto py-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-2xl mx-auto">
-          <h1 className="text-2xl font-bold mb-4 text-red-800">Error Loading Learning Paths</h1>
-          <p className="text-red-600 mb-4">{errorMessage}</p>
-          <Button asChild variant="outline" className="mt-2">
-            <Link href="/dashboard">
-              Return to Dashboard
-            </Link>
-          </Button>
-        </div>
-      </div>
-    )
+    const db = getFirestoreDb()
+    const col = collection(db, 'learning_paths')
+    const q = query(col, where('userId', '==', user.uid), orderBy('createdAt', 'desc'))
+    const snaps = await getDocs(q)
+    learningPaths = snaps.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Error fetching learning paths from Firestore', e)
   }
   
-  const calculatePathProgress = (path: LearningPath) => {
-    if (path.user_progress && path.user_progress.length > 0) {
-      const totalProgress = path.user_progress.reduce(
-        (sum: number, progress) => sum + (progress.progress_percentage || 0),
-        0,
-      )
-      return Math.round(totalProgress / path.user_progress.length)
-    }
-    // Fallback: compute from roadmap if available
-    const roadmap = (path as any).path_data?.roadmap
+  const calculatePathProgress = (path: any) => {
+    const roadmap = path.pathData?.roadmap
     return computeRoadmapPercent(roadmap)
   }
 
-  const getResourceCounts = (path: LearningPath) => {
-    const weeks = (path as any).path_data?.roadmap?.weeks
+  const getResourceCounts = (path: any) => {
+    const weeks = path.pathData?.roadmap?.weeks
     if (!Array.isArray(weeks) || weeks.length === 0) return { done: 0, total: 0 }
     let done = 0
     let total = 0

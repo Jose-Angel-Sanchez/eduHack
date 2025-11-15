@@ -1,13 +1,3 @@
-<<<<<<< HEAD
-import type React from "react"
-import type { Metadata } from "next"
-import { Inter } from "next/font/google"
-import "./globals.css"
-import AccessibilityToolbar from "@/components/accessibility/accessibility-toolbar"
-import SiteNavbar from "@/components/site-navbar"
-import { createClient } from "@/lib/supabase/server"
-export const dynamic = "force-dynamic"
-=======
 import type React from "react";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
@@ -15,7 +5,6 @@ import "./globals.css";
 import AccessibilityToolbar from "@/components/accessibility/accessibility-toolbar";
 import SiteNavbar from "@/components/site-navbar";
 import { getCurrentUser } from "@/lib/firebase/server";
->>>>>>> b24e64e0cf6a0f7a4f44a2424d8e8f7959c01082
 
 const googleSansCode = Inter({
   subsets: ["latin"],
@@ -43,15 +32,12 @@ export const metadata: Metadata = {
   ],
   generator: "v0.app",
   icons: {
-<<<<<<< HEAD
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-=======
     icon: [
       { url: "/favicon.ico" },
       { url: "/icon.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" }
     ],
-    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
->>>>>>> b24e64e0cf6a0f7a4f44a2424d8e8f7959c01082
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }]
   },
   manifest: "/manifest.json",
 };

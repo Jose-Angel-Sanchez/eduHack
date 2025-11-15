@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth } from "../../src/infrastructure/firebase/client"
 import { useAuth } from "@/components/providers/auth-provider-enhanced"
 import { isMasterAdminEmail } from "@/lib/utils/isMasterAdmin"
 
@@ -35,7 +35,7 @@ export default function CoursesListMinimal({ userId }: { userId: string }) {
     learning_objectives_text: string
   } | null>(null)
   const [aiGenerating, setAiGenerating] = useState<boolean>(false)
-  const supabase = createClient()
+  const authFirebase = getFirebaseAuth()
   const isMaster = useMemo(() => isMasterAdminEmail(user?.email), [user?.email])
   const [ownerFilter, setOwnerFilter] = useState<"mine" | "all">("mine")
   const [search, setSearch] = useState("")

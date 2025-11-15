@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getFirestoreDb } from "../../src/infrastructure/firebase/client"
+import { doc, getDoc, updateDoc } from "firebase/firestore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -16,7 +17,7 @@ const DIFFICULTY_LEVELS = [
 ]
 
 export default function CourseEditForm({ userId, courseId }: { userId: string; courseId: string }) {
-  const supabase = createClient()
+  const db = getFirestoreDb()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -32,28 +33,26 @@ export default function CourseEditForm({ userId, courseId }: { userId: string; c
 
   useEffect(() => {
     const load = async () => {
-      const { data, error } = await supabase
-        .from("courses")
-        .select("*")
-        .eq("id", courseId)
-        .eq("created_by", userId)
-        .single()
-      if (error || !data) {
+      try {
+        const snap = await getDoc(doc(db, "courses", courseId))
+        if (!snap.exists()) {
+          toast({ variant: "destructive", description: "No se pudo cargar el curso." })
+        } else {
+          const data = snap.data() as any
+          const est = typeof data.estimated_duration === "number" && !Number.isNaN(data.estimated_duration) ? data.estimated_duration : 0
+          setForm({
+            title: data.title || "",
+            description: data.description || "",
+            category: data.category || "",
+            difficulty_level: data.difficulty_level || "",
+            estimated_duration: est,
+          })
+          setDurationInput(String(est))
+          const lo: string[] = Array.isArray(data.learning_objectives) ? data.learning_objectives : []
+          setLearningObjectivesText(lo.join("\n"))
+        }
+      } catch(e) {
         toast({ variant: "destructive", description: "No se pudo cargar el curso." })
-      } else {
-        const est = typeof data.estimated_duration === "number" && !Number.isNaN(data.estimated_duration)
-          ? data.estimated_duration
-          : 0
-        setForm({
-          title: data.title || "",
-          description: data.description || "",
-          category: data.category || "",
-          difficulty_level: data.difficulty_level || "",
-          estimated_duration: est,
-        })
-        setDurationInput(String(est))
-        const lo: string[] = Array.isArray((data as any).learning_objectives) ? (data as any).learning_objectives : []
-        setLearningObjectivesText(lo.join("\n"))
       }
       setLoading(false)
     }
@@ -76,23 +75,18 @@ export default function CourseEditForm({ userId, courseId }: { userId: string; c
       .map((s) => s.trim())
       .filter(Boolean)
 
-    const { error } = await supabase
-      .from("courses")
-      .update({
+    try {
+      await updateDoc(doc(db, "courses", courseId), {
         title: form.title,
         description: form.description,
         category: form.category,
         difficulty_level: form.difficulty_level,
         estimated_duration: minutes,
-        learning_objectives,
+        learning_objectives
       })
-      .eq("id", courseId)
-      .eq("created_by", userId)
-
-    if (error) {
-      toast({ variant: "destructive", description: "No se pudo guardar el curso." })
-    } else {
       toast({ description: "Curso actualizado." })
+    } catch(e) {
+      toast({ variant: "destructive", description: "No se pudo guardar el curso." })
     }
     setSaving(false)
   }

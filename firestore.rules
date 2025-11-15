@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userIdField) {
+      return isSignedIn() && request.auth.uid == userIdField;
+    }
+    // Profiles: user can read all basic profiles, write only own.
+    match /profiles/{userId} {
+      allow read: if true; // public profile info
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false; // no hard deletes
+    }
+    // Courses: read public, only admin role can write.
+    match /courses/{courseId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn() && request.auth.token.role == 'admin';
+    }
+    // Enrollments: user can enroll themselves; read own enrollments.
+    match /enrollments/{enrollmentId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+      allow update: if false;
+    }
+    // Feedback (course ratings): user can create/update own rating for a course; public aggregated reads via queries.
+    match /feedback/{feedbackId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow delete: if false;
+    }
+    // Progress tracking: user can write their own progress.
+    match /progress/{progressId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow delete: if false;
+    }
+  }
+}

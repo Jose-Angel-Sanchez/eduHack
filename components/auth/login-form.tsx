@@ -11,52 +11,53 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { signIn } from "@/lib/actions"
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
+"use client"
 
-  return (
     <Button
       type="submit"
       disabled={pending}
       className="w-full bg-primary hover:bg-primary-hover text-white py-3 text-lg font-medium rounded-lg h-12"
     >
-      {pending ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Iniciando sesión...
-        </>
-      ) : (
-        "Iniciar Sesión"
-      )}
-    </Button>
-  )
-}
+import { useRouter } from "next/navigation"
+import { useState } from "react"
 
-export default function LoginForm() {
-  const router = useRouter()
-  const [state, formAction] = useActionState(signIn, null)
-  const [showPassword, setShowPassword] = useState(false)
-
-  // Handle successful login by redirecting
-  useEffect(() => {
-    if (state?.success) {
-      const destination = state?.isAdmin ? "/manage" : "/dashboard"
-      router.push(destination)
-    }
-  }, [state, router])
 
   return (
-    <Card className="w-full max-w-md shadow-xl border-0 bg-white/95 backdrop-blur-sm">
       <CardHeader className="space-y-2 text-center pb-6">
-        <CardTitle className="text-3xl font-bold text-gray-900">Iniciar Sesión</CardTitle>
-        <CardDescription className="text-gray-600 text-lg">
-          Accede a tu plataforma de aprendizaje personalizada
-        </CardDescription>
-      </CardHeader>
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-      <CardContent>
-        <form action={formAction} className="space-y-6">
-          {state?.error && (
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setError(null)
+    const form = e.currentTarget
+    const email = (form.elements.namedItem("email") as HTMLInputElement)?.value
+    const password = (form.elements.namedItem("password") as HTMLInputElement)?.value
+    if (!email || !password) {
+      setError("Correo y contraseña requeridos")
+      return
+    }
+    setLoading(true)
+    try {
+      const resp = await fetch("/api/v3/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      })
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        setError(data?.error || "Error iniciando sesión")
+        return
+      }
+      const destination = data?.isAdmin ? "/manage" : "/dashboard"
+      router.push(destination)
+    } catch (err: any) {
+      setError(err.message || "Error inesperado")
+    } finally {
+      setLoading(false)
+    }
+  }
+        <CardTitle className="text-3xl font-bold text-gray-900">Iniciar Sesión</CardTitle>
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {state.error}
             </div>
@@ -67,12 +68,12 @@ export default function LoginForm() {
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Correo Electrónico
               </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
                   placeholder="tu@ejemplo.com"
                   required
                   className="pl-10 h-12 border-gray-300 focus:border-primary focus:ring-primary"
@@ -105,7 +106,20 @@ export default function LoginForm() {
             </div>
           </div>
 
-          <SubmitButton />
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-primary hover:bg-primary-hover text-white py-3 text-lg font-medium rounded-lg h-12"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Iniciando sesión...
+              </>
+            ) : (
+              "Iniciar Sesión"
+            )}
+          </Button>
 
           <div className="text-center text-gray-600">
             ¿No tienes una cuenta?{" "}

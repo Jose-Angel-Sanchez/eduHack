@@ -1,34 +1,26 @@
-<<<<<<< HEAD
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
-export const dynamic = "force-dynamic"
-import { redirect } from "next/navigation"
-import RegisterForm from "@/components/auth/register-form"
+import { getCurrentUser } from "@/lib/firebase/server";
+import RegisterFormFirebase from "@/components/auth/register-form-firebase";
+
+export const dynamic = "force-dynamic";
 
 export default async function RegisterPage() {
-  // If Supabase is not configured, show setup message directly
-  if (!isSupabaseConfigured) {
+  const user = await getCurrentUser();
+  if (user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <h1 className="text-2xl font-bold mb-4 text-foreground">Connect Supabase to get started</h1>
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold">Ya estás autenticado</h1>
+          <a
+            href="/dashboard"
+            className="inline-block bg-primary text-white px-4 py-2 rounded"
+          >
+            Ir al dashboard
+          </a>
+        </div>
       </div>
-    )
+    );
   }
 
-  // Check if user is already logged in
-  const supabase = createClient()
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-
-  // If user is logged in, redirect to dashboard
-  if (session) {
-    redirect("/dashboard")
-  }
-=======
-import RegisterFormFirebase from "@/components/auth/register-form-firebase";
->>>>>>> b24e64e0cf6a0f7a4f44a2424d8e8f7959c01082
-
-export default function RegisterPage() {
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-gray-900 dark:to-gray-800">
       <div className="flex-1 flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">

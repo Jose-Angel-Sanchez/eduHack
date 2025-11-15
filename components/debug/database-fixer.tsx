@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/providers/auth-provider-enhanced'
+import { getFirestoreDb } from '@/src/infrastructure/firebase/client'
+import { collection, getDocs, limit, query } from 'firebase/firestore'
 import { Button } from '@/components/ui/button'
 
 export default function DatabaseFixer() {
@@ -12,23 +13,10 @@ export default function DatabaseFixer() {
   const [sqlFixes, setSqlFixes] = useState<any[]>([])
   const { user } = useAuth()
 
-  const supabase = createClient()
-
+  // Deprecated: SQL fixes for Supabase no longer apply.
   const getSqlFixes = async () => {
-    try {
-      const response = await fetch('/api/execute-sql', { method: 'POST' })
-      const data = await response.json()
-      
-      if (data.success && data.results) {
-        setSqlFixes(data.results)
-        setMessage('📝 SQL fixes generated. Execute these in Supabase SQL Editor:')
-      } else {
-        setMessage('❌ Error generating SQL fixes')
-      }
-    } catch (error) {
-      console.error('Error getting SQL fixes:', error)
-      setMessage('❌ Error getting SQL fixes')
-    }
+    setSqlFixes([])
+    setMessage('ℹ️ Herramienta de SQL (Supabase) obsoleta tras migración a Firebase.')
   }
 
   const fixDatabase = async () => {
@@ -37,196 +25,23 @@ export default function DatabaseFixer() {
     setResults([])
 
     try {
-      // Test 0: Check user authentication first
-      console.log('Checking user authentication...')
       if (!user) {
-        setResults([{ 
-          test: 'User Authentication', 
-          success: false, 
-          error: 'No user found in AuthProvider context',
-          details: 'Make sure you are logged in and the AuthProvider is working correctly'
-        }])
-        setMessage('❌ Authentication required. Please log in first.')
+        setResults([{ test: 'Auth', success: false, error: 'Usuario no autenticado' }])
+        setMessage('❌ Autenticación requerida')
         return
       }
-
-      setResults([{ 
-        test: 'User Authentication', 
-        success: true, 
-        data: { id: user.id, email: user.email },
-        message: 'User is authenticated via AuthProvider'
-      }])
-
-      console.log('🔧 Starting database fixes...')
-      
-      // Test 1: Check if we can read from courses table
-      console.log('Testing courses table access...')
-      const { data: courseData, error: courseError } = await supabase
-        .from('courses')
-        .select('id, title, created_by')
-        .limit(1)
-
-      if (courseError) {
-        console.error('Error reading courses:', courseError)
-        setResults(prev => [...prev, { 
-          test: 'Read courses table', 
-          success: false, 
-          error: courseError.message 
-        }])
-      } else {
-        console.log('✅ Can read courses table')
-        setResults(prev => [...prev, { 
-          test: 'Read courses table', 
-          success: true, 
-          data: courseData 
-        }])
-      }
-
-      // Test 2: Try to create a test course
-      console.log('Testing course creation...')
-      
-      if (!user) {
-        throw new Error('User not authenticated - please check AuthProvider')
-      }
-
-      console.log('Using user:', user.id, user.email)
-
-      const { data: testCourse, error: createError } = await supabase
-        .from('courses')
-        .insert({
-          title: 'Test Course - ' + Date.now(),
-          description: 'This is a test course to verify RLS policies',
-          category: 'Otros',
-          difficulty_level: 'beginner',
-          estimated_duration: 60,
-          created_by: user.id,
-          is_active: false // Mark as inactive so it doesn't appear in production
-        })
-        .select('id')
-
-      if (createError) {
-        console.error('Error creating course:', createError)
-        setResults(prev => [...prev, { 
-          test: 'Create test course', 
-          success: false, 
-          error: createError.message,
-          details: 'This indicates RLS policies are blocking course creation'
-        }])
-      } else {
-        console.log('✅ Successfully created test course')
-        setResults(prev => [...prev, { 
-          test: 'Create test course', 
-          success: true, 
-          data: testCourse,
-          message: 'RLS policies are working correctly!'
-        }])
-
-        // Clean up: delete the test course
-        if (testCourse && testCourse.length > 0) {
-          await supabase
-            .from('courses')
-            .delete()
-            .eq('id', testCourse[0].id)
-        }
-      }
-
-      // Test 3: Try to create a test section
-      console.log('Testing section creation...')
-      
-      // First try to find an existing course or create one
-      let testCourseId = null
-      const { data: existingCourses } = await supabase
-        .from('courses')
-        .select('id')
-        .eq('created_by', user.id)
-        .limit(1)
-
-      if (existingCourses && existingCourses.length > 0) {
-        testCourseId = existingCourses[0].id
-      } else {
-        // Create a temporary course for testing
-        const { data: tempCourse, error: tempCourseError } = await supabase
-          .from('courses')
-          .insert({
-            title: 'Temp Course for Testing - ' + Date.now(),
-            description: 'Temporary course for section testing',
-            category: 'Otros',
-            difficulty_level: 'beginner',
-            estimated_duration: 60,
-            created_by: user.id,
-            is_active: false
-          })
-          .select('id')
-          .single()
-
-        if (tempCourseError) {
-          setResults(prev => [...prev, { 
-            test: 'Create temp course for section test', 
-            success: false, 
-            error: tempCourseError.message,
-            details: 'Cannot test sections without a course. Please run course diagnostics first.'
-          }])
-        } else {
-          testCourseId = tempCourse.id
-        }
-      }
-
-      if (testCourseId) {
-        const { data: testSection, error: sectionError } = await supabase
-          .from('course_sections')
-          .insert({
-            title: 'Test Section - ' + Date.now(),
-            description: 'This is a test section to verify RLS policies',
-            course_id: testCourseId,
-            order_index: 1
-          })
-          .select('id')
-
-        if (sectionError) {
-          console.error('Error creating section:', sectionError)
-          setResults(prev => [...prev, { 
-            test: 'Create test section', 
-            success: false, 
-            error: sectionError.message,
-            details: 'This indicates course_sections RLS policies are blocking section creation'
-          }])
-        } else {
-          console.log('✅ Successfully created test section')
-          setResults(prev => [...prev, { 
-            test: 'Create test section', 
-            success: true, 
-            data: testSection,
-            message: 'Section RLS policies are working correctly!'
-          }])
-
-          // Clean up: delete the test section
-          if (testSection && testSection.length > 0) {
-            await supabase
-              .from('course_sections')
-              .delete()
-              .eq('id', testSection[0].id)
-          }
-        }
-      }
-
-      // Test 4: Check table structure
-      console.log('Checking table structure...')
-      setResults(prev => [...prev, { 
-        test: 'Table structure check', 
-        success: true, 
-        message: 'If section creation failed, check that course_sections table exists and has proper RLS policies'
-      }])
-
-      setMessage('🔍 Database analysis completed. Check results below.')
-
-    } catch (error: any) {
-      console.error('Database fix error:', error)
-      setMessage(`❌ Error: ${error.message}`)
-      setResults(prev => [...prev, { 
-        test: 'General error', 
-        success: false, 
-        error: error.message 
-      }])
+      const db = getFirestoreDb()
+      const col = collection(db, 'courses')
+      const q = query(col, limit(1))
+      const snap = await getDocs(q)
+      setResults([
+        { test: 'Auth', success: true, data: { uid: user.uid, email: user.email } },
+        { test: 'Firestore courses read', success: true, data: snap.docs.map(d => ({ id: d.id, title: d.get('title') })) }
+      ])
+      setMessage('✅ Diagnóstico Firebase completado')
+    } catch (e:any) {
+      setResults(prev => [...prev, { test: 'Firestore access', success: false, error: e.message }])
+      setMessage(`❌ Error: ${e.message}`)
     } finally {
       setIsLoading(false)
     }
@@ -235,7 +50,7 @@ export default function DatabaseFixer() {
   return (
     <div className="space-y-4 p-6 bg-white border rounded-lg">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">🔧 Database Diagnostics</h3>
+        <h3 className="text-lg font-semibold">🔧 Firebase Diagnostics</h3>
         <div className="flex gap-2">
           {!user && (
             <Button 
@@ -246,18 +61,11 @@ export default function DatabaseFixer() {
               🔐 Login First
             </Button>
           )}
-          <Button 
-            onClick={fixDatabase}
-            disabled={isLoading}
-            variant="outline"
-          >
-            {isLoading ? '🔄 Analyzing...' : '🔍 Run Diagnostics'}
+          <Button onClick={fixDatabase} disabled={isLoading} variant="outline">
+            {isLoading ? '🔄 Analizando...' : '🔍 Ejecutar Diagnóstico'}
           </Button>
-          <Button 
-            onClick={getSqlFixes}
-            variant="default"
-          >
-            📝 Generate SQL Fixes
+          <Button onClick={getSqlFixes} variant="default">
+            🗑️ SQL (Supabase) Obsoleto
           </Button>
         </div>
       </div>
@@ -306,51 +114,11 @@ export default function DatabaseFixer() {
                   {result.message}
                 </div>
               )}
-              {result.data && (
-                <div className="text-gray-600 mt-1 text-xs">
-                  <strong>Data:</strong> {JSON.stringify(result.data, null, 2)}
+              {sqlFixes.length > 0 && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+                  Herramienta de SQL para Supabase eliminada. Usa reglas Firestore para seguridad.
                 </div>
               )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {sqlFixes.length > 0 && (
-        <div className="mt-4 space-y-2">
-          <h4 className="font-medium">🛠️ SQL Fixes to Execute:</h4>
-          <div className="text-sm text-gray-600 mb-3">
-            Copy and paste these SQL statements into the Supabase SQL Editor and execute them in order:
-          </div>
-          {sqlFixes.map((fix, index) => (
-            <div key={index} className="border border-gray-300 rounded">
-              <div className="bg-gray-100 px-3 py-2 font-medium text-sm border-b">
-                {index + 1}. {fix.name}
-              </div>
-              <div className="p-3">
-                <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto">
-                  <code>{fix.sql}</code>
-                </pre>
-                {fix.note && (
-                  <div className="text-xs text-blue-600 mt-2">
-                    💡 {fix.note}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          <div className="mt-4 p-3 bg-blue-100 border border-blue-300 rounded">
-            <p className="text-sm text-blue-800">
-              🔗 <strong>Supabase SQL Editor:</strong> Go to your Supabase project → SQL Editor → New query, 
-              then paste and execute each statement above.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded">
-        <h4 className="font-medium text-yellow-800 mb-2">💡 Manual Fix Instructions</h4>
-        <p className="text-sm text-yellow-700 mb-2">
           If the diagnostics show RLS policy errors, you need to run this SQL in your Supabase SQL editor:
         </p>
         <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">

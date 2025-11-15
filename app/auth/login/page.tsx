@@ -1,6 +1,19 @@
 import LoginForm from "@/components/auth/login-form-firebase";
+import { getCurrentUser } from "@/lib/firebase/server";
 
-export default function LoginPage() {
+export const dynamic = "force-dynamic";
+export default async function LoginPage() {
+  const user = await getCurrentUser();
+  if (user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold">Ya has iniciado sesión</h1>
+          <a href="/dashboard" className="inline-block bg-primary text-white px-4 py-2 rounded">Ir al dashboard</a>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <div className="flex-1 flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">

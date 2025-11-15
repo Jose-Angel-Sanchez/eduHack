@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getFirebaseAuth, getFirestoreDb } from "../../src/infrastructure/firebase/client"
+import { collection, addDoc, serverTimestamp, query, where, getDocs, limit } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 import { Loader2, Play, BookOpen } from "lucide-react"
 import { toast } from "sonner"
@@ -16,7 +17,8 @@ interface EnrollButtonProps {
 export default function EnrollButton({ courseId, isEnrolled, userId }: EnrollButtonProps) {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
+  const auth = getFirebaseAuth()
+  const db = getFirestoreDb()
 
   const handleEnroll = async () => {
     if (!userId || !courseId) {
@@ -26,20 +28,34 @@ export default function EnrollButton({ courseId, isEnrolled, userId }: EnrollBut
     setLoading(true)
 
     try {
-      // Call server route to handle enrollment under RLS
-      const resp = await fetch(`/api/courses/${courseId}/enroll`, { method: 'POST' })
-      const payload = await resp.json().catch(() => ({}))
-      if (!resp.ok) {
-        toast.error(payload?.error || 'Error al inscribirse')
-        return
-      }
-      if (payload?.alreadyEnrolled) {
-        toast.info('Ya estás inscrito en este curso')
+      // Obtener usuario actual Firebase si no viene por prop
+      const uid = userId || auth.currentUser?.uid
+      if (!uid) {
+        toast.error("Necesitas iniciar sesión")
         return
       }
 
-      // Refresh the page to show updated enrollment status
-  toast.success("¡Inscripción exitosa!")
+      // Verificar si ya existe inscripción
+      const q = query(
+        collection(db, "enrollments"),
+        where("userId", "==", uid),
+        where("courseId", "==", courseId),
+        limit(1)
+      )
+      const existing = await getDocs(q)
+      if (!existing.empty) {
+        toast.info("Ya estás inscrito en este curso")
+        return
+      }
+
+      // Crear inscripción
+      await addDoc(collection(db, "enrollments"), {
+        userId: uid,
+        courseId,
+        createdAt: serverTimestamp()
+      })
+
+      toast.success("¡Inscripción exitosa!")
       router.refresh()
     } catch (error) {
       console.warn("Error enrolling in course:", error)

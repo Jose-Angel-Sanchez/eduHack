@@ -1,6 +1,6 @@
-import { createClient, type Database } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { SupabaseClient } from "@supabase/supabase-js"
+import { getCurrentUser } from "@/lib/firebase/server"
+import { getFirestoreDb } from "@/src/infrastructure/firebase/client"
+import { doc, getDoc } from "firebase/firestore"
 import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
@@ -14,69 +14,35 @@ import { Brain, Clock, BookOpen, ArrowLeft } from "lucide-react"
 type LearningPathRow = Database["public"]["Tables"]["learning_paths"]["Row"]
 
 export default async function LearningPathDetailPage({ params }: { params: { id: string } }) {
-  const supabase = createClient() as SupabaseClient<Database>
+  const user = await getCurrentUser()
+  if (!user) redirect('/auth/login')
 
-  // Auth check
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    redirect("/auth/login")
+  // Firestore migration placeholder: fetch learning path doc
+  let pathData: any = null
+  try {
+    const db = getFirestoreDb()
+    const snap = await getDoc(doc(db, 'learning_paths', params.id))
+    if (snap.exists()) pathData = { id: snap.id, ...snap.data() }
+  } catch (e) {
+    console.error('Error loading learning path from Firestore', e)
   }
-
-  // Fetch path by ID and ensure it belongs to the user
-  const { data: path, error } = await supabase
-    .from("learning_paths")
-    .select("*")
-    .eq("id", params.id)
-    .eq("user_id", user!.id)
-    .single<LearningPathRow>()
-
-  if (error || !path) {
-    notFound()
-  }
+  if (!pathData || pathData.userId !== user.uid) notFound()
 
   // Gemini-generated data lives in path.path_data
-  const data = (path.path_data || {}) as any
-  const title: string = path.title || data.title || "Ruta de aprendizaje"
-  const description: string = path.description || data.description || ""
-  const difficulty: string = data.difficulty || "-"
+  const data = (pathData.pathData || {}) as any
+  const title: string = pathData.title || data.title || 'Ruta de aprendizaje'
+  const description: string = pathData.description || data.description || ''
+  const difficulty: string = data.difficulty || '-'
   const estimatedDuration: number = data.estimatedDuration || 0
   const courses: Array<{ course: any; reason?: string }> = Array.isArray(data.courses) ? data.courses : []
   const roadmap = data.roadmap && Array.isArray(data.roadmap.weeks) ? data.roadmap : { weeks: [] }
 
   // Compute progress: prefer user_progress; fallback to roadmap percent
-  let progress = 0
-  try {
-    const { data: prog } = await supabase
-      .from("user_progress")
-      .select("progress_percentage")
-      .eq("user_id", user!.id)
-      .eq("learning_path_id", path.id)
-
-    if (prog && prog.length > 0) {
-      const sum = prog.reduce((acc: number, p: any) => acc + (p.progress_percentage || 0), 0)
-      progress = Math.round(sum / prog.length)
-    } else {
-      progress = computeRoadmapPercent(roadmap)
-    }
-  } catch {
-    progress = computeRoadmapPercent(roadmap)
-  }
+  // Progress: placeholder until Firestore progress docs implemented
+  const progress = computeRoadmapPercent(roadmap)
 
   // Determine if user is SSO (can upload videos). If admin client missing, default to false
-  let canUpload = false
-  try {
-    const admin = createAdminClient()
-    if (admin) {
-      const { data: au } = await admin.auth.admin.getUserById(user!.id)
-      canUpload = (au?.user as any)?.is_sso_user === true
-    }
-  } catch {
-    canUpload = false
-  }
+  const canUpload = false // Pending migration for SSO/admin flag
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -116,7 +82,7 @@ export default async function LearningPathDetailPage({ params }: { params: { id:
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             {/* Roadmap client with typing animation and no raw JSON display */}
-            <RoadmapClient pathId={path.id} initialRoadmap={roadmap} courses={courses} />
+            <RoadmapClient pathId={pathData.id} initialRoadmap={roadmap} courses={courses} />
 
             {canUpload && (
               <div className="flex items-center gap-2">
