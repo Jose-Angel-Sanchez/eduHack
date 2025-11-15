@@ -64,7 +64,7 @@ export async function getCurrentUser() {
       console.log("[DEBUG] Parsed session cookie:", sessionCookie);
     }
     if (!sessionCookie?.value) return null;
-    const decodedToken = await adminAuth.verifyIdToken(sessionCookie.value);
+    const decodedToken = await adminAuth.verifySessionCookie(sessionCookie.value, true);
     return await adminAuth.getUser(decodedToken.uid);
   } catch (e) {
     if (process.env.NODE_ENV === "development") {
