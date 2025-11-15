@@ -1,28 +1,36 @@
-import { createClient } from '@/lib/supabase/server'
-import ClientWrapper from '@/components/wrappers/client-wrapper'
-import EditCourseClient from '@/components/courses/edit-course-client'
-import { redirect } from 'next/navigation'
+import ClientWrapper from "@/components/wrappers/client-wrapper";
+import EditCourseClient from "@/components/courses/edit-course-client";
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/firebase/server";
 
 async function getCourse(id: string) {
-  const supabase = createClient() as any
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  const user = await getCurrentUser();
+  if (!user) redirect("/auth/login");
 
-  const { data, error } = await supabase
-    .from('courses')
-    .select('id, title, description, category, difficulty_level, estimated_duration, created_by')
-    .eq('id', id)
-    .single()
-  if (error) throw new Error(error.message)
-  if (!data) throw new Error('Course not found')
-  if (data.created_by !== user.id) throw new Error('Not allowed')
-  return { ...data }
+  // TODO: Fetch course from Firestore
+  // For now, return a placeholder
+  return {
+    id,
+    title: "",
+    description: "",
+    category: "",
+    difficulty_level: "beginner",
+    estimated_duration: 0,
+    created_by: user.uid,
+  };
 }
 
-export default async function ManageEditCoursePage({ params }: { params: { id: string } }) {
-  const course = await getCourse(params.id)
-  const supabase = createClient() as any
-  const { data: { user } } = await supabase.auth.getUser()
+export default async function ManageEditCoursePage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const course = await getCourse(params.id);
+  const user = await getCurrentUser();
+
+  if (!user) {
+    redirect("/auth/login");
+  }
 
   return (
     <ClientWrapper initialUser={user}>
@@ -31,5 +39,5 @@ export default async function ManageEditCoursePage({ params }: { params: { id: s
         <EditCourseClient course={course} />
       </div>
     </ClientWrapper>
-  )
+  );
 }

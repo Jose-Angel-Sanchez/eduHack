@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
 export const dynamic = "force-dynamic"
 import { redirect } from "next/navigation"
@@ -23,18 +24,24 @@ export default async function RegisterPage() {
   if (session) {
     redirect("/dashboard")
   }
+=======
+import RegisterFormFirebase from "@/components/auth/register-form-firebase";
+>>>>>>> b24e64e0cf6a0f7a4f44a2424d8e8f7959c01082
 
+export default function RegisterPage() {
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-gray-900 dark:to-gray-800">
       <div className="flex-1 flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-        <RegisterForm />
+        <RegisterFormFirebase />
       </div>
 
       {/* Right side - Hero section */}
       <div className="hidden lg:flex lg:flex-1 lg:items-center lg:justify-center bg-secondary text-white p-12">
         <div className="max-w-md text-center">
           <h1 className="text-4xl font-bold mb-6">¡Comienza tu viaje!</h1>
-          <p className="text-xl mb-8 opacity-90">Únete a miles de estudiantes que aprenden de forma inteligente</p>
+          <p className="text-xl mb-8 opacity-90">
+            Únete a miles de estudiantes que aprenden de forma inteligente
+          </p>
           <div className="space-y-4 text-left">
             <div className="flex items-center space-x-3">
               <div className="w-2 h-2 bg-white rounded-full"></div>
@@ -52,5 +59,5 @@ export default async function RegisterPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

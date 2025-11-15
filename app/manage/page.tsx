@@ -1,14 +1,13 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
-import ClientWrapper from "@/components/wrappers/client-wrapper"
-import CourseFormMinimal from "@/components/courses/course-form-minimal"
+import { redirect } from "next/navigation";
+import ClientWrapper from "@/components/wrappers/client-wrapper";
+import CourseFormMinimal from "@/components/courses/course-form-minimal";
+import { getCurrentUser } from "@/lib/firebase/server";
 
 export default async function ManagePage() {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser();
 
   if (!user) {
-    redirect("/auth/login")
+    redirect("/auth/login");
   }
 
   return (
@@ -17,15 +16,17 @@ export default async function ManagePage() {
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold">Gestión de cursos</h1>
-            <a href="/courses" className="text-blue-600 hover:underline">Ver catálogo</a>
+            <a href="/courses" className="text-blue-600 hover:underline">
+              Ver catálogo
+            </a>
           </div>
 
-          <section className="bg-white border rounded-lg p-6">
+          <div className="bg-white border rounded-lg p-6">
             <h2 className="text-lg font-medium mb-4">Crear nuevo curso</h2>
-            <CourseFormMinimal userId={user.id} />
-          </section>
+            <CourseFormMinimal userId={user.uid} />
+          </div>
         </div>
       </div>
     </ClientWrapper>
-  )
+  );
 }

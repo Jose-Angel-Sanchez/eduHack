@@ -31,7 +31,7 @@ function SubmitButton() {
   )
 }
 
-export default function RegisterForm() {
+export default function   RegisterForm() {
   const [state, formAction] = useActionState(signUp, null)
   const [showPassword, setShowPassword] = useState(false)
 

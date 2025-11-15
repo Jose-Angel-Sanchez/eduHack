@@ -1,5 +1,6 @@
-"use server"
+"use server";
 
+<<<<<<< HEAD
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
@@ -36,22 +37,33 @@ export async function signIn(prevState: any, formData: FormData) {
   }
 
   const supabase = await getSupabaseServer()
+=======
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
+// Las funciones de signIn y signUp ahora se manejan en el cliente con Firebase Auth
+// Ver: components/auth/login-form-firebase.tsx y register-form-firebase.tsx
+>>>>>>> b24e64e0cf6a0f7a4f44a2424d8e8f7959c01082
+
+/**
+ * Crea una cookie de sesión con el token de Firebase
+ */
+export async function createSessionCookie(idToken: string) {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.toString(),
-      password: password.toString(),
-    })
+    const cookieStore = await cookies();
 
-    if (error) {
-      return { error: error.message }
-    }
+    // Guardar el token en una cookie
+    cookieStore.set("session", idToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 5, // 5 días
+      path: "/",
+    });
 
-    const emailAddr = data?.user?.email || data?.session?.user?.email || ""
-    const isAdmin = !!emailAddr?.includes("@alumno.buap.mx")
-
-    return { success: true, isAdmin }
+    return { success: true };
   } catch (error) {
+<<<<<<< HEAD
     console.error("Login error:", error)
     return { error: "An unexpected error occurred. Please try again." }
   }
@@ -123,12 +135,22 @@ export async function signUp(prevState: any, formData: FormData) {
   } catch (error) {
     console.error("Sign up error:", error)
     return { error: "An unexpected error occurred. Please try again." }
+=======
+    console.error("Error creando cookie de sesión:", error);
+    return { success: false, error: "Error al crear sesión" };
+>>>>>>> b24e64e0cf6a0f7a4f44a2424d8e8f7959c01082
   }
 }
 
 export async function signOut() {
+<<<<<<< HEAD
   const supabase = await getSupabaseServer()
+=======
+  const cookieStore = await cookies();
+>>>>>>> b24e64e0cf6a0f7a4f44a2424d8e8f7959c01082
 
-  await supabase.auth.signOut()
-  redirect("/auth/login")
+  // Eliminar todas las cookies de sesión
+  cookieStore.delete("session");
+
+  redirect("/auth/login");
 }
