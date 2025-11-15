@@ -1,7 +1,7 @@
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { cache } from "react"
-import type { Database } from "./types"
+import type { Database } from "./database.types"
 
 // Check if Supabase environment variables are available
 export const isSupabaseConfigured =
@@ -15,7 +15,16 @@ export const createClient = cache(() => {
   if (!isSupabaseConfigured) {
     throw new Error("Supabase no está configurado correctamente. Verifica las variables de entorno.")
   }
-  // Pre-fetch cookie store so the helper doesn't call cookies() directly
-  const cookieStore = cookies()
-  return createServerComponentClient<Database>({ cookies: () => cookieStore })
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        async getAll() {
+          const store = await cookies()
+          return store.getAll().map((c) => ({ name: c.name, value: c.value }))
+        },
+      },
+    }
+  )
 })

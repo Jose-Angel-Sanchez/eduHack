@@ -1,6 +1,7 @@
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 import { withAuthRetry } from "./auth"
+import type { Database } from "./database.types"
 
 const publicRoutes = [
   "/",
@@ -48,11 +49,21 @@ const getAuthState = async (request: NextRequest) => {
   // Create a response to modify
   const response = NextResponse.next()
 
-  // Create the Supabase client
-  const supabase = createMiddlewareClient({
-    req: request,
-    res: response,
-  })
+  // Create the Supabase client using SSR helper
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll().map(c => ({ name: c.name, value: c.value }))
+        },
+        setAll(cookies) {
+          cookies.forEach(({ name, value, options }) => response.cookies.set({ name, value, ...options }))
+        },
+      },
+    }
+  )
 
   // Get session with retry
   const { data: { session }, error: sessionError } = await withAuthRetry(() => 
@@ -86,10 +97,20 @@ export async function updateSession(request: NextRequest) {
     // Handle OAuth callback
     if (authCode) {
       try {
-        const supabase = createMiddlewareClient({
-          req: request,
-          res: response,
-        })
+        const supabase = createServerClient<Database>(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            cookies: {
+              getAll() {
+                return request.cookies.getAll().map(c => ({ name: c.name, value: c.value }))
+              },
+              setAll(cookies) {
+                cookies.forEach(({ name, value, options }) => response.cookies.set({ name, value, ...options }))
+              },
+            },
+          }
+        )
         await supabase.auth.exchangeCodeForSession(authCode)
 
         // After session is created, decide default redirect when `next` is not provided

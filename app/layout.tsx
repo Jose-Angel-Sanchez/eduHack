@@ -5,6 +5,7 @@ import "./globals.css"
 import AccessibilityToolbar from "@/components/accessibility/accessibility-toolbar"
 import SiteNavbar from "@/components/site-navbar"
 import { createClient } from "@/lib/supabase/server"
+export const dynamic = "force-dynamic"
 
 const googleSansCode = Inter({
   subsets: ["latin"],
@@ -25,8 +26,7 @@ export const metadata: Metadata = {
   keywords: ["learning", "education", "AI", "personalized", "courses", "accessibility"],
   generator: "v0.app",
   icons: {
-    icon: [{ url: "/favicon.ico" }, { url: "/icon.png", sizes: "192x192", type: "image/png" }],
-    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },
   manifest: "/manifest.json",
 }

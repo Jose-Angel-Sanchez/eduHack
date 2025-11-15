@@ -153,7 +153,18 @@ END $$;
 -- Create user profile handling function with Supabase auth schema
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  final_username TEXT;
+  base_username TEXT;
 BEGIN
+    base_username := COALESCE(NEW.raw_user_meta_data->>'username', SPLIT_PART(NEW.email, '@', 1));
+    final_username := base_username;
+
+    -- Check for conflicts and append a short hash if needed
+    IF EXISTS (SELECT 1 FROM public.profiles WHERE username = final_username) THEN
+        final_username := base_username || '_' || SUBSTRING(md5(random()::text), 1, 4);
+    END IF;
+
     INSERT INTO public.profiles (
         id,
         full_name,
@@ -164,8 +175,7 @@ BEGIN
     VALUES (
         NEW.id,
         COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
-        COALESCE(NEW.raw_user_meta_data->>'username', 
-                 SPLIT_PART(NEW.email, '@', 1) || '_' || SUBSTRING(NEW.id::text, 1, 6)),
+        final_username,
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'avatar_url', '')
     );

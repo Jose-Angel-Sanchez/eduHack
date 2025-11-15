@@ -1,8 +1,27 @@
 "use server"
 
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import type { Database } from "./supabase/database.types"
+
+async function getSupabaseServer() {
+  const cookieStore = await cookies()
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll().map(c => ({ name: c.name, value: c.value }))
+        },
+        setAll(cookies) {
+          cookies.forEach(({ name, value, options }) => cookieStore.set({ name, value, ...options }))
+        },
+      },
+    }
+  )
+}
 
 export async function signIn(prevState: any, formData: FormData) {
   if (!formData) {
@@ -16,8 +35,7 @@ export async function signIn(prevState: any, formData: FormData) {
     return { error: "Email and password are required" }
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
+  const supabase = await getSupabaseServer()
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -57,8 +75,7 @@ export async function signUp(prevState: any, formData: FormData) {
     return { error: "Username is required" }
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
+  const supabase = await getSupabaseServer()
 
   try {
     const baseUrl =
@@ -66,32 +83,41 @@ export async function signUp(prevState: any, formData: FormData) {
       process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
       (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000")
 
-    // Primero verificamos si el usuario ya existe
-    const { data: existingUser } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('username', username.toString())
-      .single()
-
-    if (existingUser) {
-      return { error: "Este nombre de usuario ya está en uso" }
+    const desiredUsername = (username?.toString() || "").trim()
+    const userMeta = {
+      full_name: fullName?.toString() || "",
+      username: desiredUsername,
     }
 
-    const { error } = await supabase.auth.signUp({
+    // Attempt 1: try with requested username
+    let { error } = await supabase.auth.signUp({
       email: email.toString(),
       password: password.toString(),
       options: {
-        emailRedirectTo: `${baseUrl}/dashboard`,
-        data: {
-          full_name: fullName?.toString() || "",
-          username: username?.toString() || "",
-        },
+        emailRedirectTo: `${/^https?:\/\//i.test(baseUrl) ? baseUrl : `http://${baseUrl}`}/dashboard`,
+        data: userMeta,
       },
     })
 
-    if (error) {
-      return { error: error.message }
+    // If DB failed to save profile (likely username conflict), retry with a unique suffix once
+    if (error && /Database error saving new user|duplicate key value/i.test(error.message)) {
+      const uniqueUsername = `${desiredUsername}_${Math.random().toString(36).slice(2, 6)}`
+      const retryMeta = { ...userMeta, username: uniqueUsername }
+      const retry = await supabase.auth.signUp({
+        email: email.toString(),
+        password: password.toString(),
+        options: {
+          emailRedirectTo: `${/^https?:\/\//i.test(baseUrl) ? baseUrl : `http://${baseUrl}`}/dashboard`,
+          data: retryMeta,
+        },
+      })
+      if (retry.error) {
+        return { error: retry.error.message }
+      }
+      return { success: "¡Revisa tu correo para confirmar tu cuenta! Tu usuario se ajustó automáticamente por disponibilidad." }
     }
+
+    if (error) return { error: error.message }
 
     return { success: "¡Revisa tu correo para confirmar tu cuenta y comenzar a aprender!" }
   } catch (error) {
@@ -101,8 +127,7 @@ export async function signUp(prevState: any, formData: FormData) {
 }
 
 export async function signOut() {
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
+  const supabase = await getSupabaseServer()
 
   await supabase.auth.signOut()
   redirect("/auth/login")

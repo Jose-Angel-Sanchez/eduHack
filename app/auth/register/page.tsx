@@ -1,4 +1,5 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
+export const dynamic = "force-dynamic"
 import { redirect } from "next/navigation"
 import RegisterForm from "@/components/auth/register-form"
 
