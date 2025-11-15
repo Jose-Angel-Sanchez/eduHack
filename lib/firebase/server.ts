@@ -1,78 +1,45 @@
 import { cookies } from "next/headers";
-// Dynamic admin import will avoid build-time resolution errors if firebase-admin isn't installed yet
-type App = any
-type Auth = any
-let initializeApp: any, getApps: any, cert: any, getAuth: any
-async function ensureAdminImported() {
-  if (!initializeApp) {
-    try {
-      const appMod = await import('firebase-admin/app')
-      initializeApp = appMod.initializeApp
-      getApps = appMod.getApps
-      cert = appMod.cert
-      const authMod = await import('firebase-admin/auth')
-      getAuth = authMod.getAuth
-    } catch (e) {
-      console.error('🔥 No se pudo importar firebase-admin dinámicamente:', e)
-    }
-  }
-}
 
+// Lazy dynamic import of firebase-admin only when needed (no top-level await)
+type App = any;
+type Auth = any;
+let initializeApp: any, getApps: any, cert: any, getAuth: any;
 let adminApp: App | null = null;
 let adminAuth: Auth | null = null;
 
-// Debug: Mostrar las variables de entorno (sin mostrar la clave completa)
-console.log("\n🔍 Verificando variables de entorno Firebase Admin:");
-console.log(
-  "- FIREBASE_PROJECT_ID:",
-  process.env.FIREBASE_PROJECT_ID ? "✅" : "❌"
-);
-console.log(
-  "- FIREBASE_CLIENT_EMAIL:",
-  process.env.FIREBASE_CLIENT_EMAIL ? "✅" : "❌"
-);
-console.log(
-  "- FIREBASE_PRIVATE_KEY:",
-  process.env.FIREBASE_PRIVATE_KEY ? "✅" : "❌"
-);
-
-// Verificar si Firebase Admin está configurado
 const isAdminConfigured =
-  typeof process.env.FIREBASE_PROJECT_ID === "string" &&
-  process.env.FIREBASE_PROJECT_ID.length > 0 &&
-  typeof process.env.FIREBASE_CLIENT_EMAIL === "string" &&
-  process.env.FIREBASE_CLIENT_EMAIL.length > 0 &&
-  typeof process.env.FIREBASE_PRIVATE_KEY === "string" &&
-  process.env.FIREBASE_PRIVATE_KEY.length > 0;
+  !!process.env.FIREBASE_PROJECT_ID &&
+  !!process.env.FIREBASE_CLIENT_EMAIL &&
+  !!process.env.FIREBASE_PRIVATE_KEY;
 
-// Inicializar Firebase Admin (solo en el servidor y si está configurado)
-if (isAdminConfigured) {
-  // Attempt dynamic import before initializing
-  await ensureAdminImported()
-}
-
-if (isAdminConfigured && getApps && getApps().length === 0) {
+async function loadAdmin() {
+  if (!isAdminConfigured) return;
+  if (adminAuth) return; // already initialized
   try {
-    console.log("🔧 Intentando inicializar Firebase Admin...");
-    adminApp = initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID!,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, "\n"),
-      }),
-    });
-    adminAuth = getAuth(adminApp);
-    console.log("✅ Firebase Admin inicializado correctamente");
-  } catch (error) {
-    console.error("❌ Error inicializando Firebase Admin:", error);
-  }
-} else {
-  if (!isAdminConfigured) {
-    console.warn("⚠️ isAdminConfigured = false");
-  }
-  if (getApps && getApps().length > 0) {
-    console.log("ℹ️ Firebase Admin ya estaba inicializado");
-    adminAuth = getAuth ? getAuth() : null;
+    if (!initializeApp) {
+      const appMod = await import("firebase-admin/app");
+      initializeApp = appMod.initializeApp;
+      getApps = appMod.getApps;
+      cert = appMod.cert;
+      const authMod = await import("firebase-admin/auth");
+      getAuth = authMod.getAuth;
+    }
+    if (getApps && getApps().length === 0) {
+      adminApp = initializeApp({
+        credential: cert({
+          projectId: process.env.FIREBASE_PROJECT_ID!,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, "\n"),
+        }),
+      });
+      adminAuth = getAuth(adminApp);
+    } else if (getAuth) {
+      adminAuth = getAuth();
+    }
+  } catch (e) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Firebase Admin init failed:", e);
+    }
   }
 }
 
@@ -81,29 +48,29 @@ if (isAdminConfigured && getApps && getApps().length === 0) {
  * Nota: Requiere Firebase Admin SDK configurado
  */
 export async function getCurrentUser() {
-  // Si Firebase Admin no está configurado, retornar null
-  if (!adminAuth) {
-    console.warn(
-      "⚠️ Firebase Admin no está configurado. El usuario no puede ser verificado en el servidor."
-    );
-    return null;
-  }
-
+  if (!adminAuth) await loadAdmin();
+  if (!adminAuth) return null;
   try {
+    // Print raw cookie header for debugging
+    if (process.env.NODE_ENV === "development") {
+      const rawHeader = (typeof globalThis?.process !== "undefined" && globalThis?.process?.env?.NEXT_RUNTIME === "node")
+        ? (globalThis?.process?.env?.COOKIE_HEADER || "(no COOKIE_HEADER env)")
+        : "(not node runtime)";
+      console.log("[DEBUG] Raw cookie header:", rawHeader);
+    }
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session");
-
-    if (!sessionCookie?.value) {
-      return null;
+    if (process.env.NODE_ENV === "development") {
+      console.log("[DEBUG] Parsed session cookie:", sessionCookie);
     }
-
-    // Verificar el token
+    if (!sessionCookie?.value) return null;
     const decodedToken = await adminAuth.verifyIdToken(sessionCookie.value);
-    const user = await adminAuth.getUser(decodedToken.uid);
-
-    return user;
-  } catch (error) {
-    console.error("Error obteniendo usuario actual:", error);
+    return await adminAuth.getUser(decodedToken.uid);
+  } catch (e) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("getCurrentUser failed (expected if no valid session)");
+      console.warn("[DEBUG] Error:", e);
+    }
     return null;
   }
 }
@@ -116,22 +83,6 @@ export function isFirebaseConfigured() {
 }
 
 export async function getAdminAuth(): Promise<Auth | null> {
-  if (!adminAuth && isAdminConfigured) {
-    await ensureAdminImported()
-    if (getApps && getApps().length === 0 && initializeApp && cert && getAuth) {
-      try {
-        adminApp = initializeApp({
-          credential: cert({
-            projectId: process.env.FIREBASE_PROJECT_ID!,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, '\n')
-          })
-        })
-        adminAuth = getAuth(adminApp)
-      } catch (e) {
-        console.error('No se pudo inicializar Firebase Admin (petición tardía):', e)
-      }
-    }
-  }
-  return adminAuth
+  if (!adminAuth) await loadAdmin();
+  return adminAuth;
 }

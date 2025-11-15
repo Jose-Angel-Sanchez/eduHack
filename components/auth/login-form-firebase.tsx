@@ -34,28 +34,19 @@ export default function LoginForm() {
     const password = formData.get("password") as string;
 
     try {
-      // Iniciar sesión con Firebase
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-      const user = userCredential.user;
-
-      // Obtener el token de ID
-      const idToken = await user.getIdToken();
-
-      // Crear cookie de sesión en el servidor
-      await createSessionCookie(idToken);
-
-      // Obtener perfil del usuario
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      const userData = userDoc.data();
-
-      const isAdmin = userData?.isAdmin || email.includes("@alumno.buap.mx");
-
-      // Redirigir según el tipo de usuario
-      const destination = isAdmin ? "/manage" : "/dashboard";
+      // POST login to API route to set session cookie
+      const resp = await fetch("/api/v3/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+        credentials: "include"
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setError(data?.error || "Error iniciando sesión");
+        return;
+      }
+      const destination = data?.isAdmin ? "/manage" : "/dashboard";
       router.push(destination);
       router.refresh();
     } catch (error: any) {

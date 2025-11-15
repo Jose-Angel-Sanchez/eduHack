@@ -25,13 +25,27 @@ export async function POST(request: Request) {
       email: session.email,
       isAdmin: session.isAdmin
     })
-    res.cookies.set('fbSession', sessionCookie, {
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.cookies.set('session', sessionCookie, {
       httpOnly: true,
-      secure: true,
+      secure: false, // Always false in dev for localhost
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24
-    })
+    });
+    if (isDev) {
+      console.log('[DEBUG] Session cookie set:', {
+        name: 'session',
+        value: sessionCookie?.slice(0, 16) + '...',
+        options: {
+          httpOnly: true,
+          secure: false,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 60 * 60 * 24
+        }
+      });
+    }
     return res
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 400 })

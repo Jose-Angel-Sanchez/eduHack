@@ -1,19 +1,12 @@
 import { checkSuperUser } from "../../../lib/utils/checkSuperUser"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { createClient } from "@/lib/supabase/server"
 import ContentUploader from "@/components/admin/content-uploader"
 import ContentList from "@/components/admin/content-list-improved"
 
 export default async function AdminContentPage() {
   const user = await checkSuperUser()
-  const supabase = createClient() as any
-
-  // Load courses owned by this superuser to feed the global uploader
-  const { data: myCourses } = await supabase
-    .from('courses')
-    .select('id, title, category, created_at')
-    .eq('created_by', user.id)
-    .order('created_at', { ascending: false })
+  // Supabase eliminado: placeholder vacío hasta migrar a Firestore.
+  const myCourses: any[] = []
 
   return (
     <div className="min-h-screen p-8 bg-gray-50">
@@ -28,7 +21,7 @@ export default async function AdminContentPage() {
           <CardContent>
             <ContentUploader
               userId={user.id}
-              initialCourses={(myCourses || []).map((c: any) => ({ id: c.id, title: c.title }))}
+              initialCourses={myCourses.map((c: any) => ({ id: c.id, title: c.title }))}
             />
           </CardContent>
         </Card>
@@ -43,7 +36,7 @@ export default async function AdminContentPage() {
           </CardContent>
         </Card>
 
-        {(!myCourses || myCourses.length === 0) && (
+        {myCourses.length === 0 && (
           <Card>
             <CardHeader>
               <CardTitle>No tienes cursos propios aún</CardTitle>
